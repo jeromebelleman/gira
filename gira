@@ -1,87 +1,125 @@
 #! /usr/bin/env python
 
 import sys
+import os.path
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
-import cmd
-import getpass
-import requests
-from pprint import pprint
+import subprocess
+import urllib
+import json
+import pprint
+import prettytable
+import cli
 
-URL = 'rest/api/latest'
+URL = '/rest/api/latest'
 
-class Cli(cmd.Cmd):
-    def __init__(self, auth, server):
-        cmd.Cmd.__init__(self)
+class Gira(cli.Cli):
+    def __init__(self, server):
+        cli.Cli.__init__(self, history=True)
 
-        self.auth = auth
         self.server = server
 
-        self.prompt = 'gira% '
+        # Get a new cookie if needs be
+        self.cookiepath = self.directory + '/cookie'
+        if not os.path.exists(os.path.expanduser(self.cookiepath)):
+            subprocess.call(['get-cookie', '-u',
+                             server + '/login', '-o', self.cookiepath])
 
-    def do_list(self, line):
-        res = 'search?jql=assignee=foo'
-        r = requests.get('%s/%s/%s' % (self.server, URL, res), auth=self.auth)
-        print '%s/%s/%s' % (self.server, URL, res)
+        # Arguments
+        self.versionsparser.add_argument('project')
 
+        self.componentsparser.add_argument('project')
+
+        self.versionparser.add_argument('project')
+        self.versionparser.add_argument('version')
+
+        self.searchparser.add_argument('jql')
+
+        # Sink for curl
+        self.null = open(os.devnull, 'w')
+
+    def curl(self, res):
+        url = self.server + URL + res
+        proc = subprocess.Popen(['curl', '-b', self.cookiepath, url],
+                                stdout=subprocess.PIPE, stderr=self.null)
+        out, _ = proc.communicate()
+
+        self.tempreset()
+        jsonout = json.loads(out)
+        self.temp.write(pprint.pformat(jsonout))
+        return jsonout
+
+    def run_issue(self, args):
+        pprint.pprint(self.curl('/issue/AA-1234'))
+
+    def run_versions(self, args):
+        res = '/project/' + args.project
         try:
-            content = r.json()
-        except ValueError, e:
-            print >>sys.stderr, e
-            return
-            
-        for i in content['issues']:
-            key = i['key']
-            assignee = i['fields']['assignee']['displayName']
-            summary = i['fields']['summary']
-            print "%s\t%s\t%s" % (key, assignee, summary)
-        print "Found %d matching issues" % content['total']
+            for version in sorted(self.curl(res)['versions']):
+                print version['name']
+        except KeyError:
+            print >> sys.stderr, args.project + ": No such project" 
 
-    def do_issue(self, line):
-        res = 'issue/%s' % line
-        print '%s/%s/%s' % (self.server, URL, res)
-        r = requests.get('%s/%s/%s' % (self.server, URL, res), auth=self.auth)
-        pprint(r.json())
+    def run_version(self, args):
+        # Get issues from version
+        query = 'project = %s AND fixVersion = "%s"' % \
+            (args.project, args.version)
 
-    def do_session(self, _):
-        print '%s/rest/auth/1/session' % self.server
-        r = requests.post('%s/rest/auth/1/session' % self.server, auth=self.auth)
-        print r.status_code
-        print r.text
-        r = requests.get('%s/rest/auth/1/session' % self.server, auth=self.auth)
-        print r.status_code
-        print r.text
+        tab = prettytable.PrettyTable(["KEY",
+                                       "ASSIGNEE",
+                                       "REPORTER",
+                                       "COMPONENTS",
+                                       "VERSIONS",
+                                       "STATUS",
+                                      ])
+        tab.align = 'l'
+        tab.padding_width = 1
+        tab.border = False
+        for issue in self.search(query)['issues']:
+            # Fields
+            fields = issue['fields']
 
-    def do_version(self, _):
-        res = 'issue/%s' % line
-        print '%s/%s/%s' % (self.server, URL, res)
-        r = requests.get('%s/%s/%s' % (self.server, URL, res), auth=self.auth)
-        print r.text
+            assignee = fields['assignee']
+            assignee = assignee['displayName'] if assignee else ''
 
-    def do_EOF(self, _):
-        print
-        sys.exit(0)
+            components = ' '.join([com['name'] for com in fields['components']])
 
-    def help_EOF(self):
-        print "Exit. You could also use Ctrl-D."
+            versions = ' '.join([ver['name'] for ver in fields['fixVersions']])
+
+            reporter = fields['reporter']['displayName']
+
+            status = fields['status']['name']
+
+            # Add row
+            tab.add_row([issue['key'],
+                         assignee,
+                         reporter,
+                         components,
+                         versions,
+                         status,
+                        ])
+        print tab
+
+    def search(self, query):
+        return self.curl('/search?jql=' + urllib.quote(query))
+
+    def run_components(self, args):
+        res = '/project/' + args.project
+        try:
+            for component in sorted(self.curl(res)['components']):
+                print component['name']
+        except KeyError:
+            print >> sys.stderr, args.project + ": No such project" 
+
+    def run_search(self, args):
+        pprint.pprint(self.search(args.jql))
 
 def main():
     p = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
-    p.add_argument('-u', '--username', default=getpass.getuser())
-    p.add_argument('-p', '--password', nargs='?')
     p.add_argument('-s', '--server', default='https://example.net/jira')
     args = p.parse_args()
 
-    if args.password:
-        password = args.password
-    else:
-        password = getpass.getpass()
-
-    cli = Cli((args.username, password), args.server)
-    while True:
-        try:
-            cli.cmdloop()
-        except KeyboardInterrupt:
-            print
+    # CLI
+    Gira(args.server).loop()
 
 if __name__ == '__main__':
     main()
