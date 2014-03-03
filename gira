@@ -6,6 +6,7 @@ from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 import subprocess
 import urllib
 import json
+import ConfigParser
 import pprint
 import cli
 import tab
@@ -20,6 +21,10 @@ class Gira(cli.Cli):
         self.project = project
         self.prompt = (project if project else 'gira') + '% '
 
+        # Configuration
+        self.cfg = ConfigParser.SafeConfigParser()
+        self.cfg.read(self.directory + '/gira.cfg')
+
         # Get a new cookie if needs be
         self.cookiepath = self.directory + '/cookie'
         if not os.path.exists(os.path.expanduser(self.cookiepath)):
@@ -30,8 +35,8 @@ class Gira(cli.Cli):
 
         self.componentsparser.add_argument('-p', '--project')
 
-        self.versionparser.add_argument('version', nargs='+')
-        self.versionparser.add_argument('-p', '--project')
+        self.issuesparser.add_argument('version', nargs='+')
+        self.issuesparser.add_argument('-p', '--project')
 
         self.searchparser.add_argument('jql', nargs='+')
 
@@ -86,7 +91,7 @@ class Gira(cli.Cli):
         for version in sorted(versions):
             print version
 
-    def run_version(self, args):
+    def run_issues(self, args):
         if not self.project:
             print >> sys.stderr, "Project not set"
             return
@@ -103,30 +108,42 @@ class Gira(cli.Cli):
                  "VERSIONS",
                  "STATUS",
                 ]]
-        for issue in self.search(query)['issues']:
-            # Fields
-            fields = issue['fields']
+        try:
+            for issue in self.search(query)['issues']:
+                # Fields
+                fields = issue['fields']
 
-            assignee = fields['assignee']
-            assignee = assignee['displayName'] if assignee else ''
+                assignee = self.nickname(fields, 'assignee')
 
-            components = ' '.join([com['name'] for com in fields['components']])
+                components = ' '.join([com['name']
+                                       for com in fields['components']])
 
-            versions = ' '.join([ver['name'] for ver in fields['fixVersions']])
+                versions = ' '.join([ver['name']
+                                     for ver in fields['fixVersions']])
 
-            reporter = fields['reporter']['displayName']
+                reporter = self.nickname(fields, 'reporter')
 
-            status = fields['status']['name']
+                status = fields['status']['name']
 
-            # Add row
-            rows.append([issue['key'],
-                         assignee,
-                         reporter,
-                         components,
-                         versions,
-                         status,
-                        ])
-        tab.tab(rows, spacing=2, maxw=20)
+                # Add row
+                rows.append([issue['key'],
+                             assignee,
+                             reporter,
+                             components,
+                             versions,
+                             status,
+                            ])
+            tab.tab(rows, spacing=2, maxw=20)
+        except KeyError:
+            print >> sys.stderr, ' '.join(args.version) + ": No such version"
+
+    def nickname(self, fields, field):
+        try:
+            return self.cfg.get('nicknames', fields[field]['displayName'])
+        except TypeError:
+            return ''
+        except ConfigParser.NoOptionError:
+            return fields[field]['displayName']
 
     def search(self, jql):
         return self.curl('/search?jql=' + urllib.quote(jql))
@@ -167,6 +184,7 @@ class Gira(cli.Cli):
             print >> sys.stderr, args.project + ": No such project"
 
 def main():
+    # Arguments
     p = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     p.add_argument('-s', '--server', default='https://example.net/jira')
     p.add_argument('project', nargs='?')
