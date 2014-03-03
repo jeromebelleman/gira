@@ -74,12 +74,17 @@ class Gira(cli.Cli):
             print >> sys.stderr, "Project not set"
             return
 
+        # Query
         res = '/project/' + (args.project if args.project else self.project)
         try:
-            for version in sorted(self.curl(res)['versions']):
-                print version['name']
+            versions = [ver['name'] for ver in self.curl(res)['versions']]
         except KeyError:
             print >> sys.stderr, args.project + ": No such project"
+            return
+
+        # Report
+        for version in sorted(versions):
+            print version
 
     def run_version(self, args):
         if not self.project:
@@ -131,12 +136,17 @@ class Gira(cli.Cli):
             print >> sys.stderr, "Project not set"
             return
 
+        # Query
         res = '/project/' + (args.project if args.project else self.project)
         try:
-            for component in sorted(self.curl(res)['components']):
-                print component['name']
+            components = [comp['name'] for comp in self.curl(res)['components']]
         except KeyError:
             print >> sys.stderr, args.project + ": No such project"
+            return
+
+        # Report
+        for component in sorted(components):
+            print component
 
     def run_search(self, args):
         jql = ['"%s"' % word if ' ' in word else word for word in args.jql]
