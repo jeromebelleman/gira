@@ -47,7 +47,7 @@ class Gira(cli.Cli):
 
         self.useparser.add_argument('project')
 
-        self.issueparser.add_argument('key')
+        self.issueparser.add_argument('key', nargs='+')
 
         # Sink for curl
         self.null = open(os.devnull, 'w')
@@ -198,66 +198,76 @@ class Gira(cli.Cli):
             print >> sys.stderr, args.project + ": No such project"
 
     def run_issue(self, args):
-        issue = self.curl('/issue/' + args.key)
-        fields = issue['fields']
+        for key in args.key:
+            issue = self.curl('/issue/' + key)
+            fields = issue['fields']
 
-        # Heading
-        print "%s/%s %s" % (fields['project']['name'],
-                            issue['key'],
-                            fields['summary'])
-        print
+            # Header
+            print ">>> %s/%s %s" % (fields['project']['name'],
+                                    issue['key'],
+                                    fields['summary'])
 
-        # Type and status
-        fmt = "Type:       {0:15} Status:     {1}"
-        print fmt.format(fields['issuetype']['name'],
-                         fields['status']['name'])
+            # Type and status
+            fmt = "Type:       {0:15} Status:     {1}"
+            print fmt.format(fields['issuetype']['name'],
+                             fields['status']['name'])
 
 
-        # Priority and resolution
-        resolution = fields['resolution']
-        fmt = "Priority:   {0:15} Resolution: {1}"
-        print fmt.format(fields['priority']['name'],
-                         resolution['name'] if resolution else '')
+            # Priority and resolution
+            resolution = fields['resolution']
+            fmt = "Priority:   {0:15} Resolution: {1}"
+            print fmt.format(fields['priority']['name'],
+                             resolution['name'] if resolution else '')
 
-        # Components and versions
-        compvers = enumerate(zip(fields['components'], fields['fixVersions']))
-        for i, (component, version) in compvers:
-            if i == 0:
-                fmt = "Components: {0:15} Versions:   {1}"
-            else:
-                fmt = "            {0:15}             {1}"
-            print fmt.format(component['name'], version['name'])
+            # Components and versions
+            compvers = enumerate(zip(fields['components'],
+                                     fields['fixVersions']))
+            for i, (component, version) in compvers:
+                if i == 0:
+                    fmt = "Components: {0:15} Versions:   {1}"
+                else:
+                    fmt = "            {0:15}             {1}"
+                print fmt.format(component['name'], version['name'])
 
-        # Creation date and security
-        fmt =  "Created:    {0:15} Security:   {1}"
-        print fmt.format(fields['created'][:10], fields['security']['name'])
+            # Creation date and security
+            fmt =  "Created:    {0:15} Security:   {1}"
+            print fmt.format(fields['created'][:10], fields['security']['name'])
 
-        # Update date and assignee
-        asn = fields['assignee']
-        asn = self.nickname(asn['displayName']) if asn else ''
-        fmt =  "Updated:    {0:15} Assignee:   {1}"
-        print fmt.format(fields['updated'][:10], asn)
+            # Update date and assignee
+            asn = fields['assignee']
+            asn = self.nickname(asn['displayName']) if asn else ''
+            fmt =  "Updated:    {0:15} Assignee:   {1}"
+            print fmt.format(fields['updated'][:10], asn)
 
-        # Resolution date and reporter
-        resdate = fields['resolutiondate']
-        fmt =  "Resolved:   {0:15} Reporter:   {1}"
-        print fmt.format(resdate[:10] if resdate else '',
-                         self.nickname(fields['reporter']['displayName']))
-        print
+            # Resolution date and reporter
+            resdate = fields['resolutiondate']
+            fmt =  "Resolved:   {0:15} Reporter:   {1}"
+            print fmt.format(resdate[:10] if resdate else '',
+                             self.nickname(fields['reporter']['displayName']))
+            print
 
-        # Description
-        print "Description:"
-        if fields['description']:
-            print self.wrapper.fill(fields['description'])
-        print
+            # Description
+            print "Description:"
+            if fields['description']:
+                print self.wrapper.fill(fields['description'])
+            print
 
-        # Comments
-        print "Comments:"
-        print
-        for comment in fields['comment']['comments']:
-            print '%s, %s:' % (self.nickname(comment['author']['displayName']),
-                               comment['updated'][:10])
-            print self.wrapper.fill(comment['body'])
+            # Comments
+            if fields['comment']['comments']:
+                print "Comments:"
+                print
+                for i, comment in enumerate(fields['comment']['comments']):
+                    print '%s, %s:' % \
+                        (self.nickname(comment['author']['displayName']),
+                         comment['updated'][:10])
+                    print self.wrapper.fill(comment['body'])
+                    if i < fields['comment']['total'] - 1:
+                        print
+
+            # Footer
+            print "<<< %s/%s %s" % (fields['project']['name'],
+                                    issue['key'],
+                                    fields['summary'])
             print
 
 def main():
