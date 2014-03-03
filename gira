@@ -13,10 +13,12 @@ import tab
 URL = '/rest/api/latest'
 
 class Gira(cli.Cli):
-    def __init__(self, server):
+    def __init__(self, server, project):
         cli.Cli.__init__(self, history=True)
 
         self.server = server
+        self.project = project
+        self.prompt = (project if project else 'gira') + '% '
 
         # Get a new cookie if needs be
         self.cookiepath = self.directory + '/cookie'
@@ -24,14 +26,16 @@ class Gira(cli.Cli):
             self.getcookie()
 
         # Arguments
-        self.versionsparser.add_argument('project')
+        self.versionsparser.add_argument('-p', '--project')
 
-        self.componentsparser.add_argument('project')
+        self.componentsparser.add_argument('-p', '--project')
 
-        self.versionparser.add_argument('project')
         self.versionparser.add_argument('version', nargs='+')
+        self.versionparser.add_argument('-p', '--project')
 
         self.searchparser.add_argument('jql', nargs='+')
+
+        self.useparser.add_argument('project')
 
         # Sink for curl
         self.null = open(os.devnull, 'w')
@@ -66,17 +70,26 @@ class Gira(cli.Cli):
         pprint.pprint(self.curl('/issue/AA-1234'))
 
     def run_versions(self, args):
-        res = '/project/' + args.project
+        if not self.project:
+            print >> sys.stderr, "Project not set"
+            return
+
+        res = '/project/' + (args.project if args.project else self.project)
         try:
             for version in sorted(self.curl(res)['versions']):
                 print version['name']
         except KeyError:
-            print >> sys.stderr, args.project + ": No such project" 
+            print >> sys.stderr, args.project + ": No such project"
 
     def run_version(self, args):
+        if not self.project:
+            print >> sys.stderr, "Project not set"
+            return
+
         # Get issues from version
         query = 'project = %s AND fixVersion = "%s"' % \
-            (args.project, ' '.join(args.version))
+            (args.project if args.project else self.project,
+             ' '.join(args.version))
 
         rows = [["KEY",
                  "ASSIGNEE",
@@ -114,12 +127,16 @@ class Gira(cli.Cli):
         return self.curl('/search?jql=' + urllib.quote(jql))
 
     def run_components(self, args):
-        res = '/project/' + args.project
+        if not self.project:
+            print >> sys.stderr, "Project not set"
+            return
+
+        res = '/project/' + (args.project if args.project else self.project)
         try:
             for component in sorted(self.curl(res)['components']):
                 print component['name']
         except KeyError:
-            print >> sys.stderr, args.project + ": No such project" 
+            print >> sys.stderr, args.project + ": No such project"
 
     def run_search(self, args):
         jql = ['"%s"' % word if ' ' in word else word for word in args.jql]
@@ -130,13 +147,23 @@ class Gira(cli.Cli):
         projects.insert(0, ["PROJECT", "KEY"])
         tab.tab(projects)
 
+    def run_use(self, args):
+        for project in self.curl('/project'):
+            if args.project in (project['name'], project['key']):
+                self.project = project['key']
+                self.prompt = self.project + '% '
+                break
+        else:
+            print >> sys.stderr, args.project + ": No such project"
+
 def main():
     p = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     p.add_argument('-s', '--server', default='https://example.net/jira')
+    p.add_argument('project', nargs='?')
     args = p.parse_args()
 
     # CLI
-    Gira(args.server).loop()
+    Gira(args.server, args.project).loop()
 
 if __name__ == '__main__':
     main()
