@@ -38,6 +38,8 @@ class Gira(cli.Cli):
         self.issuesparser.add_argument('-p', '--project')
         self.issuesparser.add_argument('-c', '--component')
         self.issuesparser.add_argument('-v', '--version', nargs='+')
+        self.issuesparser.add_argument('-m', '--maxresults', type=int,
+                                       default=50)
 
         self.searchparser.add_argument('jql', nargs='+')
 
@@ -112,7 +114,7 @@ class Gira(cli.Cli):
                  "STATUS",
                 ]]
         try:
-            for issue in self.search(query)['issues']:
+            for issue in self.search(query, args.maxresults)['issues']:
                 # Fields
                 fields = issue['fields']
 
@@ -148,8 +150,9 @@ class Gira(cli.Cli):
         except ConfigParser.NoOptionError:
             return fields[field]['displayName']
 
-    def search(self, jql):
-        return self.curl('/search?jql=' + urllib.quote(jql))
+    def search(self, jql, maxresults=50):
+        return self.curl('/search?jql=%s&maxResults=%d' % \
+                         (urllib.quote(jql), maxresults))
 
     def run_components(self, args):
         if not self.project:
