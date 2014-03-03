@@ -21,8 +21,7 @@ class Gira(cli.Cli):
         # Get a new cookie if needs be
         self.cookiepath = self.directory + '/cookie'
         if not os.path.exists(os.path.expanduser(self.cookiepath)):
-            subprocess.call(['get-cookie', '-u',
-                             server + '/login', '-o', self.cookiepath])
+            self.getcookie()
 
         # Arguments
         self.versionsparser.add_argument('project')
@@ -37,14 +36,29 @@ class Gira(cli.Cli):
         # Sink for curl
         self.null = open(os.devnull, 'w')
 
-    def curl(self, res):
-        url = self.server + URL + res
-        proc = subprocess.Popen(['curl', '-b', self.cookiepath, url],
-                                stdout=subprocess.PIPE, stderr=self.null)
-        out, _ = proc.communicate()
+    def getcookie(self):
+        subprocess.call(['get-cookie', '-u',
+                         self.server + '/login', '-o', self.cookiepath])
 
+    def curl(self, res):
+        def curl():
+            proc = subprocess.Popen(['curl', '-b', self.cookiepath, url],
+                                    stdout=subprocess.PIPE, stderr=self.null)
+            out, _ = proc.communicate()
+            return json.loads(out)
+
+        # Prepare
+        url = self.server + URL + res
         self.tempreset()
-        jsonout = json.loads(out)
+
+        # Run curl and ask for a cookie if needs be
+        try:
+            jsonout = curl()
+        except ValueError:
+            self.getcookie()
+            jsonout = curl()
+
+        # Write output
         self.temp.write(pprint.pformat(jsonout))
         return jsonout
 
