@@ -35,8 +35,9 @@ class Gira(cli.Cli):
 
         self.componentsparser.add_argument('-p', '--project')
 
-        self.issuesparser.add_argument('version', nargs='+')
         self.issuesparser.add_argument('-p', '--project')
+        self.issuesparser.add_argument('-c', '--component')
+        self.issuesparser.add_argument('-v', '--version', nargs='+')
 
         self.searchparser.add_argument('jql', nargs='+')
 
@@ -97,9 +98,11 @@ class Gira(cli.Cli):
             return
 
         # Get issues from version
-        query = 'project = %s AND fixVersion = "%s"' % \
-            (args.project if args.project else self.project,
-             ' '.join(args.version))
+        query = 'project = %s' % \
+            (args.project if args.project else self.project)
+        query += ' AND component = ' + args.component if args.component else ''
+        query += ' AND fixVersion = "%s"' % \
+            ' '.join(args.version) if args.version else ''
 
         rows = [["KEY",
                  "ASSIGNEE",
@@ -135,7 +138,7 @@ class Gira(cli.Cli):
                             ])
             tab.tab(rows, spacing=2, maxw=20)
         except KeyError:
-            print >> sys.stderr, ' '.join(args.version) + ": No such version"
+            pass
 
     def nickname(self, fields, field):
         try:
