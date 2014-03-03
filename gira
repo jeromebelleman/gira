@@ -7,8 +7,8 @@ import subprocess
 import urllib
 import json
 import pprint
-import prettytable
 import cli
+import tab
 
 URL = '/rest/api/latest'
 
@@ -29,9 +29,9 @@ class Gira(cli.Cli):
         self.componentsparser.add_argument('project')
 
         self.versionparser.add_argument('project')
-        self.versionparser.add_argument('version')
+        self.versionparser.add_argument('version', nargs='+')
 
-        self.searchparser.add_argument('jql')
+        self.searchparser.add_argument('jql', nargs='+')
 
         # Sink for curl
         self.null = open(os.devnull, 'w')
@@ -76,18 +76,15 @@ class Gira(cli.Cli):
     def run_version(self, args):
         # Get issues from version
         query = 'project = %s AND fixVersion = "%s"' % \
-            (args.project, args.version)
+            (args.project, ' '.join(args.version))
 
-        tab = prettytable.PrettyTable(["KEY",
-                                       "ASSIGNEE",
-                                       "REPORTER",
-                                       "COMPONENTS",
-                                       "VERSIONS",
-                                       "STATUS",
-                                      ])
-        tab.align = 'l'
-        tab.padding_width = 1
-        tab.border = False
+        rows = [["KEY",
+                 "ASSIGNEE",
+                 "REPORTER",
+                 "COMPONENTS",
+                 "VERSIONS",
+                 "STATUS",
+                ]]
         for issue in self.search(query)['issues']:
             # Fields
             fields = issue['fields']
@@ -104,17 +101,17 @@ class Gira(cli.Cli):
             status = fields['status']['name']
 
             # Add row
-            tab.add_row([issue['key'],
+            rows.append([issue['key'],
                          assignee,
                          reporter,
                          components,
                          versions,
                          status,
                         ])
-        print tab
+        tab.tab(rows, spacing=2, maxw=20)
 
-    def search(self, query):
-        return self.curl('/search?jql=' + urllib.quote(query))
+    def search(self, jql):
+        return self.curl('/search?jql=' + urllib.quote(jql))
 
     def run_components(self, args):
         res = '/project/' + args.project
@@ -125,7 +122,13 @@ class Gira(cli.Cli):
             print >> sys.stderr, args.project + ": No such project" 
 
     def run_search(self, args):
-        pprint.pprint(self.search(args.jql))
+        jql = ['"%s"' % word if ' ' in word else word for word in args.jql]
+        pprint.pprint(self.search(' '.join(jql)))
+
+    def run_projects(self, args):
+        projects = [[prj['name'], prj['key']] for prj in self.curl('/project')]
+        projects.insert(0, ["PROJECT", "KEY"])
+        tab.tab(projects)
 
 def main():
     p = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
