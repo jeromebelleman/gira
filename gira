@@ -112,6 +112,7 @@ class Gira(cli.Cli):
                  "COMPONENTS",
                  "VERSIONS",
                  "STATUS",
+                 "SUMMARY",
                 ]]
         try:
             for issue in self.search(query, args.maxresults)['issues']:
@@ -130,6 +131,8 @@ class Gira(cli.Cli):
 
                 status = fields['status']['name']
 
+                summary = fields['summary']
+
                 # Add row
                 rows.append([issue['key'],
                              assignee,
@@ -137,8 +140,9 @@ class Gira(cli.Cli):
                              components,
                              versions,
                              status,
+                             summary,
                             ])
-            tab.tab(rows, spacing=2, maxw=20)
+            tab.tab(rows, spacing=2, maxw=[None, None, None, 5, 8, 6, 26])
         except KeyError:
             pass
 
