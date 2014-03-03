@@ -7,9 +7,10 @@ import subprocess
 import urllib
 import json
 import ConfigParser
-import pprint
+import textwrap
 import cli
 import tab
+import pprint
 
 URL = '/rest/api/latest'
 
@@ -20,6 +21,7 @@ class Gira(cli.Cli):
         self.server = server
         self.project = project
         self.prompt = (project if project else 'gira') + '% '
+        self.wrapper = textwrap.TextWrapper(width=80)
 
         # Configuration
         self.cfg = ConfigParser.SafeConfigParser()
@@ -44,6 +46,8 @@ class Gira(cli.Cli):
         self.searchparser.add_argument('jql', nargs='+')
 
         self.useparser.add_argument('project')
+
+        self.issueparser.add_argument('key')
 
         # Sink for curl
         self.null = open(os.devnull, 'w')
@@ -119,7 +123,8 @@ class Gira(cli.Cli):
                 # Fields
                 fields = issue['fields']
 
-                assignee = self.nickname(fields, 'assignee')
+                asn = fields['assignee']
+                asn = self.nickname(asn['displayName']) if asn else ''
 
                 components = ' '.join([com['name']
                                        for com in fields['components']])
@@ -127,7 +132,8 @@ class Gira(cli.Cli):
                 versions = ' '.join([ver['name']
                                      for ver in fields['fixVersions']])
 
-                reporter = self.nickname(fields, 'reporter')
+                rep = fields['reporter']
+                rep = self.nickname(rep['displayName']) if rep else ''
 
                 status = fields['status']['name']
 
@@ -135,8 +141,8 @@ class Gira(cli.Cli):
 
                 # Add row
                 rows.append([issue['key'],
-                             assignee,
-                             reporter,
+                             asn,
+                             rep,
                              components,
                              versions,
                              status,
@@ -146,13 +152,11 @@ class Gira(cli.Cli):
         except KeyError:
             pass
 
-    def nickname(self, fields, field):
+    def nickname(self, name):
         try:
-            return self.cfg.get('nicknames', fields[field]['displayName'])
-        except TypeError:
-            return ''
+            return self.cfg.get('nicknames', name)
         except ConfigParser.NoOptionError:
-            return fields[field]['displayName']
+            return name
 
     def search(self, jql, maxresults=50):
         return self.curl('/search?jql=%s&maxResults=%d' % \
@@ -192,6 +196,69 @@ class Gira(cli.Cli):
                 break
         else:
             print >> sys.stderr, args.project + ": No such project"
+
+    def run_issue(self, args):
+        issue = self.curl('/issue/' + args.key)
+        fields = issue['fields']
+
+        # Heading
+        print "%s/%s %s" % (fields['project']['name'],
+                            issue['key'],
+                            fields['summary'])
+        print
+
+        # Type and status
+        fmt = "Type:       {0:15} Status:     {1}"
+        print fmt.format(fields['issuetype']['name'],
+                         fields['status']['name'])
+
+
+        # Priority and resolution
+        resolution = fields['resolution']
+        fmt = "Priority:   {0:15} Resolution: {1}"
+        print fmt.format(fields['priority']['name'],
+                         resolution['name'] if resolution else '')
+
+        # Components and versions
+        compvers = enumerate(zip(fields['components'], fields['fixVersions']))
+        for i, (component, version) in compvers:
+            if i == 0:
+                fmt = "Components: {0:15} Versions:   {1}"
+            else:
+                fmt = "            {0:15}             {1}"
+            print fmt.format(component['name'], version['name'])
+
+        # Creation date and security
+        fmt =  "Created:    {0:15} Security:   {1}"
+        print fmt.format(fields['created'][:10], fields['security']['name'])
+
+        # Update date and assignee
+        asn = fields['assignee']
+        asn = self.nickname(asn['displayName']) if asn else ''
+        fmt =  "Updated:    {0:15} Assignee:   {1}"
+        print fmt.format(fields['updated'][:10], asn)
+
+        # Resolution date and reporter
+        resdate = fields['resolutiondate']
+        fmt =  "Resolved:   {0:15} Reporter:   {1}"
+        print fmt.format(resdate[:10] if resdate else '',
+                         self.nickname(fields['reporter']['displayName']))
+        print
+
+        # Description
+        print "Description:"
+        if fields['description']:
+            print self.wrapper.fill(fields['description'])
+        print
+
+        # Comments
+        print "Comments:"
+        print
+        for comment in fields['comment']['comments']:
+            print '%s, %s:' % (self.nickname(comment['author']['displayName']),
+                               comment['updated'][:10])
+            print self.wrapper.fill(comment['body'])
+            print
 
 def main():
     # Arguments
