@@ -7,7 +7,6 @@ import subprocess
 import urllib
 import json
 import ConfigParser
-import textwrap
 import cli
 import tab
 import pprint
@@ -21,7 +20,6 @@ class Gira(cli.Cli):
         self.server = server
         self.project = project
         self.prompt = (project if project else 'gira') + '% '
-        self.wrapper = textwrap.TextWrapper(width=80)
 
         # Configuration
         self.cfg = ConfigParser.SafeConfigParser()
@@ -48,6 +46,7 @@ class Gira(cli.Cli):
         self.useparser.add_argument('project')
 
         self.issueparser.add_argument('key', nargs='+')
+        self.issueparser.add_argument('-e', '--edit', action='store_true')
 
         # Sink for curl
         self.null = open(os.devnull, 'w')
@@ -65,7 +64,6 @@ class Gira(cli.Cli):
 
         # Prepare
         url = self.server + URL + res
-        self.tempreset()
 
         # Run curl and ask for a cookie if needs be
         try:
@@ -74,12 +72,7 @@ class Gira(cli.Cli):
             self.getcookie()
             jsonout = curl()
 
-        # Write output
-        self.temp.write(pprint.pformat(jsonout))
         return jsonout
-
-    def run_issue(self, args):
-        pprint.pprint(self.curl('/issue/AA-1234'))
 
     def run_versions(self, args):
         if not self.project:
@@ -146,7 +139,7 @@ class Gira(cli.Cli):
                              components,
                              versions,
                              status,
-                             summary,
+                             summary.strip(),
                             ])
             tab.tab(rows, spacing=2, maxw=[None, None, None, 5, 8, 6, 26])
         except KeyError:
@@ -197,78 +190,86 @@ class Gira(cli.Cli):
         else:
             print >> sys.stderr, args.project + ": No such project"
 
+    def run_foo(self, args):
+        subprocess.call(['curl', '-b', self.cookiepath, url])
+
     def run_issue(self, args):
-        for key in args.key:
-            issue = self.curl('/issue/' + key)
-            fields = issue['fields']
+        self.tempreset()
+        for fhl in sys.stdout, self.temp:
+            for key in args.key:
+                issue = self.curl('/issue/' + key)
+                fields = issue['fields']
 
-            # Header
-            print ">>> %s/%s %s" % (fields['project']['name'],
-                                    issue['key'],
-                                    fields['summary'])
+                # Header
+                print >> fhl, ">>> %s/%s %s" % (fields['project']['name'],
+                                                issue['key'],
+                                                fields['summary'])
 
-            # Type and status
-            fmt = "Type:       {0:15} Status:     {1}"
-            print fmt.format(fields['issuetype']['name'],
-                             fields['status']['name'])
+                # Type and status
+                fmt = "Type:       {0:15} Status:     {1}"
+                print >> fhl, fmt.format(fields['issuetype']['name'],
+                                         fields['status']['name'])
 
 
-            # Priority and resolution
-            resolution = fields['resolution']
-            fmt = "Priority:   {0:15} Resolution: {1}"
-            print fmt.format(fields['priority']['name'],
-                             resolution['name'] if resolution else '')
+                # Priority and resolution
+                resolution = fields['resolution']
+                fmt = "Priority:   {0:15} Resolution: {1}"
+                print >> fhl, fmt.format(fields['priority']['name'],
+                                         resolution['name']
+                                         if resolution else '')
 
-            # Components and versions
-            compvers = enumerate(zip(fields['components'],
-                                     fields['fixVersions']))
-            for i, (component, version) in compvers:
-                if i == 0:
-                    fmt = "Components: {0:15} Versions:   {1}"
-                else:
-                    fmt = "            {0:15}             {1}"
-                print fmt.format(component['name'], version['name'])
+                # Components and versions
+                compvers = enumerate(zip(fields['components'],
+                                         fields['fixVersions']))
+                for i, (component, version) in compvers:
+                    if i == 0:
+                        fmt = "Components: {0:15} Versions:   {1}"
+                    else:
+                        fmt = "            {0:15}             {1}"
+                    print >> fhl, fmt.format(component['name'], version['name'])
 
-            # Creation date and security
-            fmt =  "Created:    {0:15} Security:   {1}"
-            print fmt.format(fields['created'][:10], fields['security']['name'])
+                # Creation date and security
+                fmt =  "Created:    {0:15} Security:   {1}"
+                print >> fhl, fmt.format(fields['created'][:10],
+                                         fields['security']['name'])
 
-            # Update date and assignee
-            asn = fields['assignee']
-            asn = self.nickname(asn['displayName']) if asn else ''
-            fmt =  "Updated:    {0:15} Assignee:   {1}"
-            print fmt.format(fields['updated'][:10], asn)
+                # Update date and assignee
+                asn = fields['assignee']
+                asn = self.nickname(asn['displayName']) if asn else ''
+                fmt =  "Updated:    {0:15} Assignee:   {1}"
+                print >> fhl, fmt.format(fields['updated'][:10], asn)
 
-            # Resolution date and reporter
-            resdate = fields['resolutiondate']
-            fmt =  "Resolved:   {0:15} Reporter:   {1}"
-            print fmt.format(resdate[:10] if resdate else '',
-                             self.nickname(fields['reporter']['displayName']))
-            print
+                # Resolution date and reporter
+                resdate = fields['resolutiondate']
+                fmt =  "Resolved:   {0:15} Reporter:   {1}"
+                print >> fhl, \
+                    fmt.format(resdate[:10] if resdate else '',
+                               self.nickname(fields['reporter']['displayName']))
+                print >> fhl
 
-            # Description
-            print "Description:"
-            if fields['description']:
-                print self.wrapper.fill(fields['description'])
-            print
+                # Description
+                print >> fhl, "Description:"
+                if fields['description']:
+                    print >> fhl, fields['description'].replace('\r', '')
 
-            # Comments
-            if fields['comment']['comments']:
-                print "Comments:"
-                print
-                for i, comment in enumerate(fields['comment']['comments']):
-                    print '%s, %s:' % \
-                        (self.nickname(comment['author']['displayName']),
-                         comment['updated'][:10])
-                    print self.wrapper.fill(comment['body'])
-                    if i < fields['comment']['total'] - 1:
-                        print
+                # Comments
+                if fields['comment']['comments']:
+                    print >> fhl
+                    print >> fhl, "Comments:"
+                    print >> fhl
+                    for i, comment in enumerate(fields['comment']['comments']):
+                        print >> fhl, '%s, %s:' % \
+                            (self.nickname(comment['author']['displayName']),
+                             comment['updated'][:10])
+                        print >> fhl, comment['body'].replace('\r', '')
+                        if i < fields['comment']['total'] - 1:
+                            print >> fhl
 
-            # Footer
-            print "<<< %s/%s %s" % (fields['project']['name'],
-                                    issue['key'],
-                                    fields['summary'])
-            print
+                # Footer
+                print >> fhl, "<<< %s/%s %s" % (fields['project']['name'],
+                                                issue['key'],
+                                                fields['summary'])
+                print >> fhl
 
 def main():
     # Arguments
