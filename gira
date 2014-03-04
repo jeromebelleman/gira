@@ -95,8 +95,10 @@ class Gira(cli.Cli):
             return
 
         # Report
-        for version in sorted(versions):
-            print version
+        self.tempreset()
+        for fhl in sys.stdout, self.temp:
+            for version in sorted(versions):
+                print >> fhl, version
 
     def issues(self, query, maxresults):
         rows = [["KEY",
@@ -185,8 +187,10 @@ class Gira(cli.Cli):
             return
 
         # Report
-        for component in sorted(components):
-            print component
+        self.tempreset()
+        for fhl in sys.stdout, self.temp:
+            for component in sorted(components):
+                print >> fhl, component
 
     def run_search(self, args):
         jql = ['"%s"' % word if ' ' in word else word for word in args.jql]
@@ -195,7 +199,9 @@ class Gira(cli.Cli):
     def run_projects(self, args):
         projects = [[prj['name'], prj['key']] for prj in self.curl('/project')]
         projects.insert(0, ["PROJECT", "KEY"])
-        tab.tab(projects)
+        self.tempreset()
+        for fhl in sys.stdout, self.temp:
+            tab.tab(projects, fhl=fhl)
 
     def run_use(self, args):
         for project in self.curl('/project'):
