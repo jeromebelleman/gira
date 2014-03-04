@@ -7,6 +7,7 @@ import subprocess
 import urllib
 import json
 import ConfigParser
+import re
 import cli
 import tab
 import textwrap
@@ -14,6 +15,8 @@ import pprint
 
 URL = '/rest/api/latest'
 MAXRESULTS = 50
+
+DESCRIPTION, COMMENTS = range(2)
 
 class Gira(cli.Cli):
     def __init__(self, server, project):
@@ -62,12 +65,23 @@ class Gira(cli.Cli):
         subprocess.call(['get-cookie', '-u',
                          self.server + '/login', '-o', self.cookiepath])
 
-    def curl(self, res):
+    def curl(self, res, data=None):
         def curl():
-            proc = subprocess.Popen(['curl', '-b', self.cookiepath, url],
-                                    stdout=subprocess.PIPE, stderr=self.null)
+            # Assemble arguments
+            args = ['curl', '-b', self.cookiepath]
+            if data:
+                # str(data) not good enough because JIRA is picky on which
+                # quotes to use, and json does it right
+                args += ['-X', 'PUT', '-d', json.dumps(data), '-H',
+                         'Content-Type: application/json']
+            args += [url]
+
+            # Run curl
+            proc = subprocess.Popen(args, stdout=subprocess.PIPE,
+                                    stderr=self.null)
             out, _ = proc.communicate()
-            return json.loads(out)
+            if out: # PUT returns empty string
+                return json.loads(out)
 
         # Prepare
         url = self.server + URL + res
@@ -292,6 +306,54 @@ class Gira(cli.Cli):
                                                 issue['key'],
                                                 fields['summary'])
                 print >> fhl
+
+        if args.edit:
+            # Open page file in Vim
+            self.temp.flush()
+            subprocess.call(['vim', '-n', '+set titlestring=gira',
+                             self.temp.name])
+
+            # Parse date from page file
+            temp = open(self.temp.name)
+            data = self.parse(temp)
+            temp.close()
+            pprint.pprint(data)
+            # self.curl('/issue/' + args.key[0], data)
+
+    def parse(self, temp):
+        data = {'fields': {}}
+
+        temp.next() # Skip header
+        temp.next() # Type and status
+        temp.next() # Priority and resolution
+        temp.next() # Components and versions
+        temp.next() # Created and security
+        temp.next() # Updated and assignee
+        temp.next() # Resolved and reporter
+        print '*' * 80
+
+        for line in temp:
+            line = line[:-1]
+
+            if not line: continue
+
+            if line == 'Description:':
+                data['fields']['description'] = ''
+                state = DESCRIPTION
+                continue
+
+            if line == 'Comments:':
+                state = COMMENTS
+                continue
+
+            if line[:4] == '<<< ':
+                break
+
+            if state == DESCRIPTION:
+                data['fields']['description'] += line
+                continue
+
+        return data
 
     def run_debug(self, args):
         jsonoutput = self.curl(args.resource)
