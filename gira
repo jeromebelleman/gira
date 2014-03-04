@@ -53,6 +53,8 @@ class Gira(cli.Cli):
         self.issueparser.add_argument('key', nargs='+')
         self.issueparser.add_argument('-e', '--edit', action='store_true')
 
+        self.debugparser.add_argument('resource')
+
         # Sink for curl
         self.null = open(os.devnull, 'w')
 
@@ -136,7 +138,10 @@ class Gira(cli.Cli):
                              status,
                              summary.strip(),
                             ])
-            tab.tab(rows, spacing=2, maxw=[None, None, None, 5, 8, 6, 26])
+            self.tempreset()
+            for fhl in sys.stdout, self.temp:
+                tab.tab(rows, spacing=2,
+                        maxw=[None, None, None, 5, 8, 6, 26], fhl=fhl)
         except KeyError:
             # No matching issue
             print self.wrapper.fill(' '.join(result['errorMessages']))
@@ -281,6 +286,12 @@ class Gira(cli.Cli):
                                                 issue['key'],
                                                 fields['summary'])
                 print >> fhl
+
+    def run_debug(self, args):
+        jsonoutput = self.curl(args.resource)
+        self.tempreset()
+        self.temp.write(pprint.pformat(jsonoutput))
+        pprint.pprint(jsonoutput)
 
 def main():
     # Arguments
