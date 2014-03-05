@@ -318,7 +318,7 @@ class Gira(cli.Cli):
         if args.edit:
             # Open page file in Vim
             self.temp.flush()
-            subprocess.call(['vim', '-n', '+set titlestring=gira',
+            subprocess.call(['vim', '-S', self.directory + '/vimrc',
                              self.temp.name])
 
             # Parse date from page file
