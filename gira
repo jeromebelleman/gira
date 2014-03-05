@@ -294,7 +294,11 @@ class Gira(cli.Cli):
                 # Description
                 print >> fhl, "Description:"
                 if fields['description']:
-                    print >> fhl, fields['description'].replace('\r', '')
+                    try:
+                        print >> fhl, fields['description'].replace('\r', '')
+                    except UnicodeEncodeError:
+                        # FIXME
+                        print >> fhl, "Gira can't handle Unicode for now"
 
                 # Comments
                 if fields['comment']['comments']:
@@ -305,7 +309,11 @@ class Gira(cli.Cli):
                         print >> fhl, '%s, %s:' % \
                             (self.nickname(comment['author']['displayName']),
                              comment['updated'][:10])
-                        print >> fhl, comment['body'].replace('\r', '')
+                        try:
+                            print >> fhl, comment['body'].replace('\r', '')
+                        except UnicodeEncodeError:
+                            # FIXME
+                            print >> fhl, "Gira can't handle Unicode for now"
                         if i < fields['comment']['total'] - 1:
                             print >> fhl
 
@@ -326,11 +334,11 @@ class Gira(cli.Cli):
             data = self.parse(temp)
             temp.close()
             pprint.pprint(data)
-            out = self.curl('/issue/' + args.key[0], data)
-            if out:
-                for error in out['errors']:
-                    msg = '%s: %s' % (error, out['errors'][error])
-                    print >> sys.stderr, self.wrapper.fill(msg)
+            # out = self.curl('/issue/' + args.key[0], data)
+            # if out:
+            #     for error in out['errors']:
+            #         msg = '%s: %s' % (error, out['errors'][error])
+            #         print >> sys.stderr, self.wrapper.fill(msg)
 
     def parse(self, temp):
         data = {'fields': {}}
