@@ -24,6 +24,8 @@ REPRIO = re.compile('^Priority: +(?P<prio>\S+) +Resolution: +(?P<res>.*)$')
 RECOMP = re.compile('^Components: +(?P<comp>\S+) +Versions: +(?P<ver>.*)$')
 REMORE = re.compile('^ +(?P<comp>\S+) + +(?P<ver>.*)$')
 RECREA = re.compile('^Created: +(?P<crea>\S+) +Security: +(?P<sec>.*)$')
+REUPDA = re.compile('^Updated: +(?P<upda>\S+) +Assignee: +(?P<asn>.*)$')
+RERESO = re.compile('^Resolved: +(?P<reso>\S+) +Reporter: +(?P<rep>.*)$')
 
 class Gira(cli.Cli):
     def __init__(self, server, project):
@@ -167,8 +169,8 @@ class Gira(cli.Cli):
                         maxw=[None, None, None, 5, 8, 6, 26], fhl=fhl)
         except KeyError:
             # No matching issue
-            print self.wrapper.fill(' '.join(result['errorMessages']))
-            pass
+            for msg in result['errorMessages']:
+                print >> sys.stderr, self.wrapper.fill(msg)
 
     def run_issues(self, args):
         if not self.project:
@@ -253,7 +255,6 @@ class Gira(cli.Cli):
                 print >> fhl, fmt.format(fields['issuetype']['name'],
                                          fields['status']['name'])
 
-
                 # Priority and resolution
                 resolution = fields['resolution']
                 fmt = "Priority:   {0:15} Resolution: {1}"
@@ -325,7 +326,11 @@ class Gira(cli.Cli):
             data = self.parse(temp)
             temp.close()
             pprint.pprint(data)
-            # self.curl('/issue/' + args.key[0], data)
+            out = self.curl('/issue/' + args.key[0], data)
+            if out:
+                for error in out['errors']:
+                    msg = '%s: %s' % (error, out['errors'][error])
+                    print >> sys.stderr, self.wrapper.fill(msg)
 
     def parse(self, temp):
         data = {'fields': {}}
@@ -344,13 +349,13 @@ class Gira(cli.Cli):
             match = RETYPE.match(line)
             if match:
                 data['fields']['issuetype'] = {'name': match.group('type')}
-                data['fields']['status'] = {'name': match.group('stat')}
+                # data['transition'] = {'name': match.group('stat')}
                 continue
 
             match = REPRIO.match(line)
             if match:
                 data['fields']['priority'] = {'name': match.group('prio')}
-                data['fields']['resolution'] = {'name': match.group('res')}
+                # data['fields']['resolution'] = {'name': match.group('res')}
                 continue
 
             match = RECOMP.match(line)
@@ -362,10 +367,22 @@ class Gira(cli.Cli):
 
             match = RECREA.match(line)
             if match:
-                state = CREA
-                # TODO
-                break
-                # XXX continue
+                state = CREA # Just leave components and versions
+                # Let's not touch dates for now
+                data['fields']['security'] = {'name': match.group('sec')}
+                continue
+
+            match = REUPDA.match(line)
+            if match:
+                # Let's not touch dates for now
+                data['fields']['assignee'] = {'name': match.group('asn')}
+                continue
+
+            match = RERESO.match(line)
+            if match:
+                # Let's not touch dates for now
+                data['fields']['reporter'] = {'name': match.group('rep')}
+                continue
 
             if line == 'Description:':
                 data['fields']['description'] = ''
@@ -391,9 +408,9 @@ class Gira(cli.Cli):
                 else:
                     break
 
-            # if state == DESC:
-            #     data['fields']['description'] += line
-            #     continue
+            if state == DESC:
+                data['fields']['description'] += line
+                continue
 
         return data
 
