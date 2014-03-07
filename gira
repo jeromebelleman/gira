@@ -8,6 +8,7 @@ import urllib
 import json
 import ConfigParser
 import re
+import tempfile
 import cli
 import tab
 import textwrap
@@ -240,105 +241,111 @@ class Gira(cli.Cli):
 
     def run_issue(self, args):
         self.tempreset()
-        for fhl in sys.stdout, self.temp:
-            for key in args.key:
-                issue = self.curl('/issue/' + key)
-                fields = issue['fields']
+        temp = tempfile.NamedTemporaryFile(prefix='issue-', dir=self.directory)
 
-                # Header
-                print >> fhl, ">>> %s/%s %s" % (fields['project']['name'],
-                                                issue['key'],
-                                                fields['summary'])
+        if args.edit:
+            fhl = temp
+        else:
+            fhl = sys.stdout
 
-                # Type and status
-                fmt = "Type:       {0:15} Status:     {1}"
-                print >> fhl, fmt.format(fields['issuetype']['name'],
-                                         fields['status']['name'])
+        for key in args.key:
+            issue = self.curl('/issue/' + key)
+            fields = issue['fields']
 
-                # Priority and resolution
-                resolution = fields['resolution']
-                fmt = "Priority:   {0:15} Resolution: {1}"
-                print >> fhl, fmt.format(fields['priority']['name'],
-                                         resolution['name']
-                                         if resolution else '')
+            # Header
+            print >> fhl, ">>> %s/%s %s" % (fields['project']['name'],
+                                            issue['key'],
+                                            fields['summary'])
 
-                # Components and versions
-                compvers = enumerate(zip(fields['components'],
-                                         fields['fixVersions']))
-                for i, (component, version) in compvers:
-                    if i == 0:
-                        fmt = "Components: {0:15} Versions:   {1}"
-                    else:
-                        fmt = "            {0:15}             {1}"
-                    print >> fhl, fmt.format(component['name'], version['name'])
+            # Type and status
+            fmt = "Type:       {0:15} Status:     {1}"
+            print >> fhl, fmt.format(fields['issuetype']['name'],
+                                     fields['status']['name'])
 
-                # Creation date and security
-                fmt =  "Created:    {0:15} Security:   {1}"
-                print >> fhl, fmt.format(fields['created'][:10],
-                                         fields['security']['name'])
+            # Priority and resolution
+            resolution = fields['resolution']
+            fmt = "Priority:   {0:15} Resolution: {1}"
+            print >> fhl, fmt.format(fields['priority']['name'],
+                                     resolution['name']
+                                     if resolution else '')
 
-                # Update date and assignee
-                asn = fields['assignee']
-                asn = self.nickname(asn['displayName']) if asn else ''
-                fmt =  "Updated:    {0:15} Assignee:   {1}"
-                print >> fhl, fmt.format(fields['updated'][:10], asn)
+            # Components and versions
+            compvers = enumerate(zip(fields['components'],
+                                     fields['fixVersions']))
+            for i, (component, version) in compvers:
+                if i == 0:
+                    fmt = "Components: {0:15} Versions:   {1}"
+                else:
+                    fmt = "            {0:15}             {1}"
+                print >> fhl, fmt.format(component['name'], version['name'])
 
-                # Resolution date and reporter
-                resdate = fields['resolutiondate']
-                fmt =  "Resolved:   {0:15} Reporter:   {1}"
-                print >> fhl, \
-                    fmt.format(resdate[:10] if resdate else '',
-                               self.nickname(fields['reporter']['displayName']))
+            # Creation date and security
+            fmt =  "Created:    {0:15} Security:   {1}"
+            print >> fhl, fmt.format(fields['created'][:10],
+                                     fields['security']['name'])
+
+            # Update date and assignee
+            asn = fields['assignee']
+            asn = self.nickname(asn['displayName']) if asn else ''
+            fmt =  "Updated:    {0:15} Assignee:   {1}"
+            print >> fhl, fmt.format(fields['updated'][:10], asn)
+
+            # Resolution date and reporter
+            resdate = fields['resolutiondate']
+            fmt =  "Resolved:   {0:15} Reporter:   {1}"
+            print >> fhl, \
+                fmt.format(resdate[:10] if resdate else '',
+                           self.nickname(fields['reporter']['displayName']))
+            print >> fhl
+
+            # Description
+            print >> fhl, "Description:"
+            if fields['description']:
+                try:
+                    print >> fhl, fields['description'].replace('\r', '')
+                except UnicodeEncodeError:
+                    # FIXME
+                    print >> fhl, "Gira can't handle Unicode for now"
+
+            # Comments
+            if fields['comment']['comments']:
                 print >> fhl
-
-                # Description
-                print >> fhl, "Description:"
-                if fields['description']:
+                print >> fhl, "Comments:"
+                print >> fhl
+                for i, comment in enumerate(fields['comment']['comments']):
+                    print >> fhl, '%s, %s:' % \
+                        (self.nickname(comment['author']['displayName']),
+                         comment['updated'][:10])
                     try:
-                        print >> fhl, fields['description'].replace('\r', '')
+                        print >> fhl, comment['body'].replace('\r', '')
                     except UnicodeEncodeError:
                         # FIXME
                         print >> fhl, "Gira can't handle Unicode for now"
+                    if i < fields['comment']['total'] - 1:
+                        print >> fhl
 
-                # Comments
-                if fields['comment']['comments']:
-                    print >> fhl
-                    print >> fhl, "Comments:"
-                    print >> fhl
-                    for i, comment in enumerate(fields['comment']['comments']):
-                        print >> fhl, '%s, %s:' % \
-                            (self.nickname(comment['author']['displayName']),
-                             comment['updated'][:10])
-                        try:
-                            print >> fhl, comment['body'].replace('\r', '')
-                        except UnicodeEncodeError:
-                            # FIXME
-                            print >> fhl, "Gira can't handle Unicode for now"
-                        if i < fields['comment']['total'] - 1:
-                            print >> fhl
-
-                # Footer
-                print >> fhl, "<<< %s/%s %s" % (fields['project']['name'],
-                                                issue['key'],
-                                                fields['summary'])
-                print >> fhl
+            # Footer
+            print >> fhl, "<<< %s/%s %s" % (fields['project']['name'],
+                                            issue['key'],
+                                            fields['summary'])
+            print >> fhl
 
         if args.edit:
             # Open page file in Vim
-            self.temp.flush()
-            subprocess.call(['vim', '-S', self.directory + '/vimrc',
-                             self.temp.name])
+            temp.flush()
+            subprocess.call(['vim', '-S', self.directory + '/vimrc', temp.name])
 
             # Parse date from page file
-            temp = open(self.temp.name)
-            data = self.parse(temp)
-            temp.close()
+            tempvim = open(temp.name)
+            data = self.parse(tempvim)
+            tempvim.close()
             pprint.pprint(data)
             # out = self.curl('/issue/' + args.key[0], data)
             # if out:
             #     for error in out['errors']:
             #         msg = '%s: %s' % (error, out['errors'][error])
             #         print >> sys.stderr, self.wrapper.fill(msg)
+        temp.close()
 
     def parse(self, temp):
         data = {'fields': {}}
