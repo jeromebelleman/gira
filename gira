@@ -256,8 +256,7 @@ class Gira(cli.Cli):
             issue = self.curl('/issue/%s?expand=transitions' % key)
             issues[key] = issue
             fields = issue['fields']
-            transs = ['%s (%s)' % (trans['name'], trans['id'])
-                      for trans in issue['transitions']]
+            transs = [trans['name'] for trans in issue['transitions']]
 
             # Header
             print >> fhl, ">>> %s/%s %s" % (fields['project']['name'],
@@ -372,14 +371,15 @@ class Gira(cli.Cli):
                             print >> sys.stderr, self.wrapper.fill(msg)
 
                 # Perform transition
-                transition = issuesedit[issue]['transition']
-                if transition and transition['id'].isdigit():
-                    out = self.curl('/issue/%s/transitions' % issue, 'POST',
-                                    {'transition': transition['id']})
-                    if out and 'errors' in out:
-                        for error in out['errors']:
-                            msg = '%s: %s' % (error, out['errors'][error])
-                            print >> sys.stderr, self.wrapper.fill(msg)
+                for transition in issues[issue]['transitions']:
+                    if issuesedit[issue]['transition']  == transition['name']:
+                        out = self.curl('/issue/%s/transitions' % issue, 'POST',
+                                        {'transition': transition['id']})
+                        if out and 'errors' in out:
+                            for error in out['errors']:
+                                msg = '%s: %s' % (error, out['errors'][error])
+                                print >> sys.stderr, self.wrapper.fill(msg)
+                        break
         temp.close()
 
     def parse(self, temp):
@@ -405,7 +405,7 @@ class Gira(cli.Cli):
             if match:
                 issue['fields']['issuetype'] = \
                     {'name': match.group('type').strip()}
-                issue['transition'] = {'id': match.group('stat')}
+                issue['transition'] = match.group('stat')
                 continue
 
             match = REPRIO.match(line[:-1])
