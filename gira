@@ -17,16 +17,17 @@ import pprint
 URL = '/rest/api/latest'
 MAXRESULTS = 50
 
-COMP, CREA, DESC, COMMENTS = range(4)
+COMP, DESC, OLDCOMM, COMM = range(4)
 
-REHEAD = re.compile('^>>> [^/]+/(?P<key>[A-Z]+-\d+) (?P<summary>.*)$')
-RETYPE = re.compile('^Type: +(?P<type>\S+) +Status: +(?P<stat>.*)$')
-REPRIO = re.compile('^Priority: +(?P<prio>\S+) +Resolution: +(?P<res>.*)$')
-RECOMP = re.compile('^Components: +(?P<comp>\S+) +Versions: +(?P<ver>.*)$')
-REMORE = re.compile('^ +(?P<comp>\S+) + +(?P<ver>.*)$')
-RECREA = re.compile('^Created: +(?P<crea>\S+) +Security: +(?P<sec>.*)$')
-REUPDA = re.compile('^Updated: +(?P<upda>\S+) +Assignee: +(?P<asn>.*)$')
-RERESO = re.compile('^Resolved: +(?P<reso>\S+) +Reporter: +(?P<rep>.*)$')
+REHEAD = re.compile('^>>> (?P<proj>[^/]+)/(?P<key>[A-Z]+-\d+) (?P<summary>.*)$')
+RETYPE = re.compile('^Type: +(?P<type>.+) +Status: +(?P<stat>.*)$')
+REPRIO = re.compile('^Priority: +(?P<prio>.+) +Resolution: +(?P<res>.*)$')
+RECOMP = re.compile('^Components: +(?P<comp>.+) +Versions: +(?P<ver>.*)$')
+REMORE = re.compile('^ +(?P<comp>.+) {5,}(?P<ver>.*)$')
+RECREA = re.compile('^Created: +(?P<crea>.+) +Security: +(?P<sec>.*)$')
+REUPDA = re.compile('^Updated: +(?P<upda>.+) +Assignee: +(?P<asn>.*)$')
+RERESO = re.compile('^Resolved: +(?P<reso>.+) +Reporter: +(?P<rep>.*)$')
+RECOMM = re.compile('^Comment from \w+, \S+:$')
 
 class Gira(cli.Cli):
     def __init__(self, server, project):
@@ -72,17 +73,20 @@ class Gira(cli.Cli):
         self.null = open(os.devnull, 'w')
 
     def getcookie(self):
+        print "Getting a fresh cookie... ",
+        sys.stdout.flush()
         subprocess.call(['get-cookie', '-u',
                          self.server + '/login', '-o', self.cookiepath])
+        print "Done."
 
-    def curl(self, res, data=None):
+    def curl(self, res, method=None, data=None):
         def curl():
             # Assemble arguments
             args = ['curl', '-b', self.cookiepath]
-            if data:
+            if method and data:
                 # str(data) not good enough because JIRA is picky on which
                 # quotes to use, and json does it right
-                args += ['-X', 'PUT', '-d', json.dumps(data), '-H',
+                args += ['-X', method, '-d', json.dumps(data), '-H',
                          'Content-Type: application/json']
             args += [url]
 
@@ -140,7 +144,7 @@ class Gira(cli.Cli):
                 fields = issue['fields']
 
                 asn = fields['assignee']
-                asn = self.nickname(asn['displayName']) if asn else ''
+                asn = asn['name'] if asn else ''
 
                 components = ' '.join([com['name']
                                        for com in fields['components']])
@@ -149,7 +153,7 @@ class Gira(cli.Cli):
                                      for ver in fields['fixVersions']])
 
                 rep = fields['reporter']
-                rep = self.nickname(rep['displayName']) if rep else ''
+                rep = rep['name'] if rep else ''
 
                 status = fields['status']['name']
 
@@ -236,9 +240,6 @@ class Gira(cli.Cli):
         else:
             print >> sys.stderr, args.project + ": No such project"
 
-    def run_foo(self, args):
-        subprocess.call(['curl', '-b', self.cookiepath, url])
-
     def run_issue(self, args):
         self.tempreset()
         temp = tempfile.NamedTemporaryFile(prefix='issue-', dir=self.directory)
@@ -286,7 +287,7 @@ class Gira(cli.Cli):
 
             # Update date and assignee
             asn = fields['assignee']
-            asn = self.nickname(asn['displayName']) if asn else ''
+            asn = asn['name'] if asn else ''
             fmt =  "Updated:    {0:15} Assignee:   {1}"
             print >> fhl, fmt.format(fields['updated'][:10], asn)
 
@@ -295,34 +296,35 @@ class Gira(cli.Cli):
             fmt =  "Resolved:   {0:15} Reporter:   {1}"
             print >> fhl, \
                 fmt.format(resdate[:10] if resdate else '',
-                           self.nickname(fields['reporter']['displayName']))
-            print >> fhl
+                           fields['reporter']['name'])
 
             # Description
-            print >> fhl, "Description:"
             if fields['description']:
+                print >> fhl
+                print >> fhl, "Description:"
                 try:
-                    print >> fhl, fields['description'].replace('\r', '')
+                    print >> fhl, \
+                        fields['description'].replace('\r', '').strip()
                 except UnicodeEncodeError:
                     # FIXME
                     print >> fhl, "Gira can't handle Unicode for now"
 
             # Comments
             if fields['comment']['comments']:
-                print >> fhl
-                print >> fhl, "Comments:"
-                print >> fhl
                 for i, comment in enumerate(fields['comment']['comments']):
-                    print >> fhl, '%s, %s:' % \
-                        (self.nickname(comment['author']['displayName']),
-                         comment['updated'][:10])
+                    print >> fhl
+                    print >> fhl, "Comment from %s, %s:" % \
+                        (comment['author']['name'], comment['updated'][:10])
                     try:
-                        print >> fhl, comment['body'].replace('\r', '')
+                        print >> fhl, comment['body'].replace('\r', '').strip()
                     except UnicodeEncodeError:
                         # FIXME
                         print >> fhl, "Gira can't handle Unicode for now"
-                    if i < fields['comment']['total'] - 1:
-                        print >> fhl
+
+            if args.edit:
+                print >> fhl
+                print >> fhl, "New Comment?"
+                print >> fhl
 
             # Footer
             print >> fhl, "<<< %s/%s %s" % (fields['project']['name'],
@@ -337,97 +339,131 @@ class Gira(cli.Cli):
 
             # Parse date from page file
             tempvim = open(temp.name)
-            data = self.parse(tempvim)
+            issues = self.parse(tempvim)
             tempvim.close()
-            pprint.pprint(data)
-            # out = self.curl('/issue/' + args.key[0], data)
-            # if out:
-            #     for error in out['errors']:
-            #         msg = '%s: %s' % (error, out['errors'][error])
-            #         print >> sys.stderr, self.wrapper.fill(msg)
+
+            for issue in issues:
+                # Update fields
+                out = self.curl('/issue/' + issue, 'PUT',
+                                {'fields': issues[issue]['fields']})
+                if out and 'errors' in out:
+                    for error in out['errors']:
+                        msg = '%s: %s' % (error, out['errors'][error])
+                        print >> sys.stderr, self.wrapper.fill(msg)
+
+                # Add comment
+                if issues[issue]['comment']:
+                    out = self.curl('/issue/%s/comment' % issue, 'POST',
+                                    {'body': issues[issue]['comment']})
+                    if out and 'errors' in out:
+                        for error in out['errors']:
+                            msg = '%s: %s' % (error, out['errors'][error])
+                            print >> sys.stderr, self.wrapper.fill(msg)
         temp.close()
 
     def parse(self, temp):
-        data = {'fields': {}}
+        issues = {}
 
         for line in temp:
-            line = line[:-1]
-
-            if not line: continue
-
-            match = REHEAD.match(line)
+            # Parse line
+            match = REHEAD.match(line[:-1])
             if match:
+                issue = {'fields': {}, 'comment': {}}
+
                 key = match.group('key')
-                data['fields']['summary'] = match.group('summary')
+                summary = match.group('summary')
+                footer = '<<< %s/%s %s' % (match.group('proj'), key, summary)
+
+                issues[key] = issue
+                issue['fields']['summary'] = summary
+                state = None
                 continue
 
-            match = RETYPE.match(line)
+            match = RETYPE.match(line[:-1])
             if match:
-                data['fields']['issuetype'] = {'name': match.group('type')}
-                # data['transition'] = {'name': match.group('stat')}
+                issue['fields']['issuetype'] = \
+                    {'name': match.group('type').strip()}
+                # issue['transition'] = {'name': match.group('stat')}
                 continue
 
-            match = REPRIO.match(line)
+            match = REPRIO.match(line[:-1])
             if match:
-                data['fields']['priority'] = {'name': match.group('prio')}
-                # data['fields']['resolution'] = {'name': match.group('res')}
+                issue['fields']['priority'] = \
+                    {'name': match.group('prio').strip()}
+                # issue['fields']['resolution'] = \
+                #     {'name': match.group('res')}
                 continue
 
-            match = RECOMP.match(line)
+            match = RECOMP.match(line[:-1])
             if match:
+                issue['fields']['components'] = \
+                    [{'name': match.group('comp').strip()}]
+                issue['fields']['fixVersions'] = \
+                    [{'name': match.group('ver').strip()}]
                 state = COMP
-                data['fields']['components'] = [{'name': match.group('comp')}]
-                data['fields']['fixVersions'] = [{'name': match.group('ver')}]
                 continue
 
-            match = RECREA.match(line)
-            if match:
-                state = CREA # Just leave components and versions
-                # Let's not touch dates for now
-                data['fields']['security'] = {'name': match.group('sec')}
-                continue
-
-            match = REUPDA.match(line)
+            match = RECREA.match(line[:-1])
             if match:
                 # Let's not touch dates for now
-                data['fields']['assignee'] = {'name': match.group('asn')}
+                issue['fields']['security'] = \
+                    {'name': match.group('sec').strip()}
                 continue
 
-            match = RERESO.match(line)
+            match = REUPDA.match(line[:-1])
             if match:
                 # Let's not touch dates for now
-                data['fields']['reporter'] = {'name': match.group('rep')}
+                issue['fields']['assignee'] = \
+                    {'name': match.group('asn').strip()}
                 continue
 
-            if line == 'Description:':
-                data['fields']['description'] = ''
+            match = RERESO.match(line[:-1])
+            if match:
+                # Let's not touch dates for now
+                issue['fields']['reporter'] = \
+                    {'name': match.group('rep').strip()}
+                continue
+
+            if line[:-1] == 'Description:':
+                issue['fields']['description'] = ''
                 state = DESC
                 continue
 
-            if line == 'Comments:':
-                state = COMMENTS
+            if RECOMM.match(line[:-1]):
+                state = OLDCOMM
                 continue
 
-            if line[:4] == '<<< ':
-                break
+            if line[:-1] == 'New Comment?':
+                if 'description' in issue['fields']:
+                    issue['fields']['description'] = \
+                        issue['fields']['description'].strip()
 
+                issue['comment'] = ''
+                state = COMM
+                continue
+
+            if line[:-1] == footer:
+                issue['comment'] = issue['comment'].strip()
+                state = None
+                continue
+
+            # Handle state
             if state == COMP:
-                match = REMORE.match(line)
+                match = REMORE.match(line[:-1])
                 if match:
                     comp = {'name': match.group('comp')}
-                    data['fields']['components'].append(comp)
+                    issue['fields']['components'].append(comp)
 
                     ver = {'name': match.group('ver')}
-                    data['fields']['fixVersions'].append(ver)
-                    continue
+                    issue['fields']['fixVersions'].append(ver)
                 else:
-                    break
+                    state = None
+            elif state == DESC:
+                issue['fields']['description'] += line
+            elif state == COMM:
+                issue['comment'] += line
 
-            if state == DESC:
-                data['fields']['description'] += line
-                continue
-
-        return data
+        return issues
 
     def run_debug(self, args):
         jsonoutput = self.curl(args.resource)
