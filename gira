@@ -251,8 +251,10 @@ class Gira(cli.Cli):
         else:
             fhl = sys.stdout
 
+        issues = {}
         for key in args.key:
             issue = self.curl('/issue/%s?expand=transitions' % key)
+            issues[key] = issue
             fields = issue['fields']
             transs = ['%s (%s)' % (trans['name'], trans['id'])
                       for trans in issue['transitions']]
@@ -335,20 +337,20 @@ class Gira(cli.Cli):
 
             # Parse date from page file
             tempvim = open(temp.name)
-            issues = self.parse(tempvim)
+            issuesedit = self.parse(tempvim)
             tempvim.close()
 
-            for issue in issues:
+            for issue in issuesedit:
                 # Update fields
                 out = self.curl('/issue/' + issue, 'PUT',
-                                {'fields': issues[issue]['fields']})
+                                {'fields': issuesedit[issue]['fields']})
                 if out and 'errors' in out:
                     for error in out['errors']:
                         msg = '%s: %s' % (error, out['errors'][error])
                         print >> sys.stderr, self.wrapper.fill(msg)
 
                 # Add comment
-                comment = issues[issue]['comment']
+                comment = issuesedit[issue]['comment']
                 if comment:
                     out = self.curl('/issue/%s/comment' % issue, 'POST',
                                     {'body': comment})
@@ -357,8 +359,20 @@ class Gira(cli.Cli):
                             msg = '%s: %s' % (error, out['errors'][error])
                             print >> sys.stderr, self.wrapper.fill(msg)
 
+                # Edit comments
+                for i, comment in enumerate(issuesedit[issue]['comments']):
+                    cid = \
+                        issues[issue]['fields']['comment']['comments'][i]['id']
+                    out = self.curl('/issue/%s/comment/%s' % (issue, cid),
+                                    'PUT', {'body': comment})
+                    # FIXME Refactor error printing (maybe in curl() itself)
+                    if out and 'errors' in out:
+                        for error in out['errors']:
+                            msg = '%s: %s' % (error, out['errors'][error])
+                            print >> sys.stderr, self.wrapper.fill(msg)
+
                 # Perform transition
-                transition = issues[issue]['transition']
+                transition = issuesedit[issue]['transition']
                 if transition and transition['id'].isdigit():
                     out = self.curl('/issue/%s/transitions' % issue, 'POST',
                                     {'transition': transition['id']})
@@ -375,7 +389,8 @@ class Gira(cli.Cli):
             # Parse line
             match = REHEAD.match(line[:-1])
             if match:
-                issue = {'fields': {}, 'comment': {}, 'transition': {}}
+                issue = {'fields': {}, 'comment': {}, 'comments': [],
+                         'transition': {}}
 
                 key = match.group('key')
                 summary = match.group('summary')
@@ -436,6 +451,9 @@ class Gira(cli.Cli):
 
             if RECOMM.match(line[:-1]):
                 state = OLDCOMM
+                if issue['comments']:
+                    issue['comments'][-1] = issue['comments'][-1].strip()
+                issue['comments'].append('')
                 continue
 
             if line[:-1] == 'New Comment?':
@@ -467,6 +485,8 @@ class Gira(cli.Cli):
                 issue['fields']['description'] += line
             elif state == COMM:
                 issue['comment'] += line
+            elif state == OLDCOMM:
+                issue['comments'][-1] += line
 
         return issues
 
