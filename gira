@@ -22,7 +22,7 @@ MAXRESULTS = 50
 COMP, DESC, OLDCOMM, COMM = range(4)
 
 REHEAD = re.compile('^>>> (?P<proj>[^/]+)/(?P<key>[A-Z]+-\d+) (?P<summary>.*)$')
-RETYPE = re.compile('^Type: +(?P<type>.+) +Status: +(?P<stat>.*)$')
+RETYPE = re.compile('^Type: +(?P<type>.+) +Status: +(?P<stat>.*) # .*$')
 REPRIO = re.compile('^Priority: +(?P<prio>.+) +Resolution: +(?P<res>.*)$')
 RECOMP = re.compile('^Components: +(?P<comp>.+) +Versions: +(?P<ver>.*)$')
 REMORE = re.compile('^ +(?P<comp>.+) {5,}(?P<ver>.*)$')
@@ -252,8 +252,10 @@ class Gira(cli.Cli):
             fhl = sys.stdout
 
         for key in args.key:
-            issue = self.curl('/issue/' + key)
+            issue = self.curl('/issue/%s?expand=transitions' % key)
             fields = issue['fields']
+            transs = ['%s (%s)' % (trans['name'], trans['id'])
+                      for trans in issue['transitions']]
 
             # Header
             print >> fhl, ">>> %s/%s %s" % (fields['project']['name'],
@@ -261,9 +263,10 @@ class Gira(cli.Cli):
                                             fields['summary'])
 
             # Type and status
-            fmt = "Type:       {0:15} Status:     {1}"
+            fmt = "Type:       {0:15} Status:     {1} # {2}"
             print >> fhl, fmt.format(fields['issuetype']['name'],
-                                     fields['status']['name'])
+                                     fields['status']['name'],
+                                     ', '.join(transs))
 
             # Priority and resolution
             resolution = fields['resolution']
@@ -345,9 +348,20 @@ class Gira(cli.Cli):
                         print >> sys.stderr, self.wrapper.fill(msg)
 
                 # Add comment
-                if issues[issue]['comment']:
+                comment = issues[issue]['comment']
+                if comment:
                     out = self.curl('/issue/%s/comment' % issue, 'POST',
-                                    {'body': issues[issue]['comment']})
+                                    {'body': comment})
+                    if out and 'errors' in out:
+                        for error in out['errors']:
+                            msg = '%s: %s' % (error, out['errors'][error])
+                            print >> sys.stderr, self.wrapper.fill(msg)
+
+                # Perform transition
+                transition = issues[issue]['transition']
+                if transition and transition['id'].isdigit():
+                    out = self.curl('/issue/%s/transitions' % issue, 'POST',
+                                    {'transition': transition['id']})
                     if out and 'errors' in out:
                         for error in out['errors']:
                             msg = '%s: %s' % (error, out['errors'][error])
@@ -361,7 +375,7 @@ class Gira(cli.Cli):
             # Parse line
             match = REHEAD.match(line[:-1])
             if match:
-                issue = {'fields': {}, 'comment': {}}
+                issue = {'fields': {}, 'comment': {}, 'transition': {}}
 
                 key = match.group('key')
                 summary = match.group('summary')
@@ -376,15 +390,13 @@ class Gira(cli.Cli):
             if match:
                 issue['fields']['issuetype'] = \
                     {'name': match.group('type').strip()}
-                # issue['transition'] = {'name': match.group('stat')}
+                issue['transition'] = {'id': match.group('stat')}
                 continue
 
             match = REPRIO.match(line[:-1])
             if match:
                 issue['fields']['priority'] = \
                     {'name': match.group('prio').strip()}
-                # issue['fields']['resolution'] = \
-                #     {'name': match.group('res')}
                 continue
 
             match = RECOMP.match(line[:-1])
