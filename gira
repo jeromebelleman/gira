@@ -11,21 +11,22 @@ import json
 import ConfigParser
 import re
 import tempfile
+import textwrap
+import itertools
 import cli
 import tab
-import textwrap
 import pprint
 
 URL = '/rest/api/latest'
 MAXRESULTS = 50
+WIDTH = 20
 
 COMP, DESC, OLDCOMM, COMM = range(4)
 
 REHEAD = re.compile('^>>> (?P<proj>[^/]+)/(?P<key>[A-Z]+-\d+) (?P<summary>.*)$')
 RETYPE = re.compile('^Type: +(?P<type>.+) +Status: +(?P<stat>.*) # .*$')
 REPRIO = re.compile('^Priority: +(?P<prio>.+) +Resolution: +(?P<res>.*)$')
-RECOMP = re.compile('^Components: +(?P<comp>.+) +Versions: +(?P<ver>.*)$')
-REMORE = re.compile('^ +(?P<comp>.+) {5,}(?P<ver>.*)$')
+RECOMP = re.compile('^(Component: +(?P<comp>.+?))?( +Version: +(?P<ver>.+))?$')
 RECREA = re.compile('^Created: +(?P<crea>.+) +Security: +(?P<sec>.*)$')
 REUPDA = re.compile('^Updated: +(?P<upda>.+) +Assignee: +(?P<asn>.*)$')
 RERESO = re.compile('^Resolved: +(?P<reso>.+) +Reporter: +(?P<rep>.*)$')
@@ -264,42 +265,47 @@ class Gira(cli.Cli):
                                             fields['summary'])
 
             # Type and status
-            fmt = "Type:       {0:15} Status:     {1} # {2}"
+            fmt = "Type:       {0:%d} Status:     {1} # {2}" % WIDTH
             print >> fhl, fmt.format(fields['issuetype']['name'],
                                      fields['status']['name'],
                                      ', '.join(transs))
 
             # Priority and resolution
+            priority = fields['priority']
             resolution = fields['resolution']
-            fmt = "Priority:   {0:15} Resolution: {1}"
-            print >> fhl, fmt.format(fields['priority']['name'],
-                                     resolution['name']
-                                     if resolution else '')
+            fmt = "Priority:   {0:%d} Resolution: {1}" % WIDTH
+            print >> fhl, fmt.format(priority['name'] if priority else '',
+                                     resolution['name'] if resolution else '')
 
-            # Components and versions
-            compvers = enumerate(zip(fields['components'],
-                                     fields['fixVersions']))
+            # Components and versions)
+            compvers = enumerate(itertools.izip_longest(fields['components'],
+                                                        fields['fixVersions']))
             for i, (component, version) in compvers:
-                if i == 0:
-                    fmt = "Components: {0:15} Versions:   {1}"
-                else:
-                    fmt = "            {0:15}             {1}"
-                print >> fhl, fmt.format(component['name'], version['name'])
+                if component and version:
+                    fmt = "Component:  {0:%d} Version:    {1}" % WIDTH
+                    values = (component['name'], version['name'])
+                elif component:
+                    fmt = "Component:  {0:%d}" % WIDTH
+                    values = (component['name'],)
+                elif version:
+                    values = ('', version['name'],)
+                    fmt = "            {0:%d} Version:    {1}" % WIDTH
+                print >> fhl, fmt.format(*values)
 
             # Creation date and security
-            fmt =  "Created:    {0:15} Security:   {1}"
+            fmt =  "Created:    {0:%d} Security:   {1}" % WIDTH
             print >> fhl, fmt.format(fields['created'][:10],
                                      fields['security']['name'])
 
             # Update date and assignee
             asn = fields['assignee']
             asn = asn['name'] if asn else ''
-            fmt =  "Updated:    {0:15} Assignee:   {1}"
+            fmt =  "Updated:    {0:%d} Assignee:   {1}" % WIDTH
             print >> fhl, fmt.format(fields['updated'][:10], asn)
 
             # Resolution date and reporter
             resdate = fields['resolutiondate']
-            fmt =  "Resolved:   {0:15} Reporter:   {1}"
+            fmt =  "Resolved:   {0:%d} Reporter:   {1}" % WIDTH
             print >> fhl, \
                 fmt.format(resdate[:10] if resdate else '',
                            fields['reporter']['name'])
@@ -391,61 +397,68 @@ class Gira(cli.Cli):
             if match:
                 issue = {'fields': {}, 'comment': {}, 'comments': [],
                          'transition': {}}
+                fields = issue['fields']
 
                 key = match.group('key')
                 summary = match.group('summary')
                 footer = '<<< %s/%s %s' % (match.group('proj'), key, summary)
 
                 issues[key] = issue
-                issue['fields']['summary'] = summary
+                fields['summary'] = summary
                 state = None
                 continue
 
             match = RETYPE.match(line[:-1])
             if match:
-                issue['fields']['issuetype'] = \
-                    {'name': match.group('type').strip()}
+                fields['issuetype'] = {'name': match.group('type').strip()}
                 issue['transition'] = match.group('stat')
                 continue
 
             match = REPRIO.match(line[:-1])
             if match:
-                issue['fields']['priority'] = \
-                    {'name': match.group('prio').strip()}
+                fields['priority'] = {'name': match.group('prio').strip()}
                 continue
 
             match = RECOMP.match(line[:-1])
             if match:
-                issue['fields']['components'] = \
-                    [{'name': match.group('comp').strip()}]
-                issue['fields']['fixVersions'] = \
-                    [{'name': match.group('ver').strip()}]
-                state = COMP
+                component = match.group('comp')
+                if component:
+                    if 'components' in fields:
+                        components = fields['components']
+                        components.append({'name': component.strip()})
+                    else:
+                        fields['components'] = [{'name': component.strip()}]
+
+                version = match.group('ver')
+                if version:
+                    if 'fixVersions' in fields:
+                        versions = fields['fixVersions']
+                        versions.append({'name': version.strip()})
+                    else:
+                        fields['fixVersions'] = \
+                            [{'name': version.strip()}]
                 continue
 
             match = RECREA.match(line[:-1])
             if match:
                 # Let's not touch dates for now
-                issue['fields']['security'] = \
-                    {'name': match.group('sec').strip()}
+                fields['security'] = {'name': match.group('sec').strip()}
                 continue
 
             match = REUPDA.match(line[:-1])
             if match:
                 # Let's not touch dates for now
-                issue['fields']['assignee'] = \
-                    {'name': match.group('asn').strip()}
+                fields['assignee'] = {'name': match.group('asn').strip()}
                 continue
 
             match = RERESO.match(line[:-1])
             if match:
                 # Let's not touch dates for now
-                issue['fields']['reporter'] = \
-                    {'name': match.group('rep').strip()}
+                fields['reporter'] = {'name': match.group('rep').strip()}
                 continue
 
             if line[:-1] == 'Description:':
-                issue['fields']['description'] = ''
+                fields['description'] = ''
                 state = DESC
                 continue
 
@@ -457,9 +470,8 @@ class Gira(cli.Cli):
                 continue
 
             if line[:-1] == 'New Comment?':
-                if 'description' in issue['fields']:
-                    issue['fields']['description'] = \
-                        issue['fields']['description'].strip()
+                if 'description' in fields:
+                    fields['description'] = fields['description'].strip()
 
                 issue['comment'] = ''
                 state = COMM
@@ -471,18 +483,8 @@ class Gira(cli.Cli):
                 continue
 
             # Handle state
-            if state == COMP:
-                match = REMORE.match(line[:-1])
-                if match:
-                    comp = {'name': match.group('comp')}
-                    issue['fields']['components'].append(comp)
-
-                    ver = {'name': match.group('ver')}
-                    issue['fields']['fixVersions'].append(ver)
-                else:
-                    state = None
-            elif state == DESC:
-                issue['fields']['description'] += line
+            if state == DESC:
+                fields['description'] += line
             elif state == COMM:
                 issue['comment'] += line
             elif state == OLDCOMM:
