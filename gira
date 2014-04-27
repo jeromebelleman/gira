@@ -32,6 +32,20 @@ REUPDA = re.compile('^Updated: +(?P<upda>.+) +Assignee: +(?P<asn>.*)$')
 RERESO = re.compile('^Resolved: +(?P<reso>.+) +Reporter: +(?P<rep>.*)$')
 RECOMM = re.compile('^Comment from \w+, \S+:$')
 
+def subset(needle, haystack):
+    if isinstance(needle, list) and isinstance(haystack, list):
+        for item0, item1 in zip(needle, haystack):
+            if not subset(item0, item1):
+                return False
+    elif isinstance(needle, dict) and isinstance(haystack, dict):
+        for item in needle:
+            if not subset(needle[item], haystack[item]):
+                return False
+    else:
+        return needle == haystack
+
+    return True
+
 class Gira(cli.Cli):
     def __init__(self, server, project):
         cli.Cli.__init__(self, history=True)
@@ -314,7 +328,7 @@ class Gira(cli.Cli):
             if fields['description']:
                 print >> fhl
                 print >> fhl, "Description:"
-                print >> fhl, fields['description'].replace('\r', '').strip()
+                print >> fhl, fields['description'].replace('\r', '')
 
             # Comments
             if fields['comment']['comments']:
@@ -347,12 +361,14 @@ class Gira(cli.Cli):
 
             for issue in issuesedit:
                 # Update fields
-                out = self.curl('/issue/' + issue, 'PUT',
-                                {'fields': issuesedit[issue]['fields']})
-                if out and 'errors' in out:
-                    for error in out['errors']:
-                        msg = '%s: %s' % (error, out['errors'][error])
-                        print >> sys.stderr, self.wrapper.fill(msg)
+                if not subset(issuesedit[issue]['fields'],
+                              issues[issue]['fields']):
+                    out = self.curl('/issue/' + issue, 'PUT',
+                                    {'fields': issuesedit[issue]['fields']})
+                    if out and 'errors' in out:
+                        for error in out['errors']:
+                            msg = '%s: %s' % (error, out['errors'][error])
+                            print >> sys.stderr, self.wrapper.fill(msg)
 
                 # Add comment
                 comment = issuesedit[issue]['comment']
@@ -420,7 +436,7 @@ class Gira(cli.Cli):
                 continue
 
             match = RECOMP.match(line[:-1])
-            if match:
+            if match and line[:-1]: # But don't eat empty lines
                 component = match.group('comp')
                 if component:
                     if 'components' in fields:
@@ -448,13 +464,15 @@ class Gira(cli.Cli):
             match = REUPDA.match(line[:-1])
             if match:
                 # Let's not touch dates for now
-                fields['assignee'] = {'name': match.group('asn').strip()}
+                asn = match.group('asn').strip()
+                fields['assignee'] = {'name': asn} if asn else None
                 continue
 
             match = RERESO.match(line[:-1])
             if match:
                 # Let's not touch dates for now
-                fields['reporter'] = {'name': match.group('rep').strip()}
+                rep = match.group('rep').strip()
+                fields['reporter'] = {'name': rep} if rep else None
                 continue
 
             if line[:-1] == 'Description:':
