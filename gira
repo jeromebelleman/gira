@@ -204,7 +204,8 @@ class Gira(cli.Cli):
         # Get issues from version
         query = 'project = %s' % \
             (args.project if args.project else self.project)
-        query += ' AND component = ' + args.component if args.component else ''
+        query += ' AND component = "%s"' % \
+            args.component if args.component else ''
         query += ' AND fixVersion = "%s"' % \
             ' '.join(args.version) if args.version else ''
 
