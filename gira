@@ -41,6 +41,8 @@ def subset(needle, haystack):
         for item in needle:
             if not subset(needle[item], haystack[item]):
                 return False
+    elif isinstance(needle, str) and isinstance(haystack, unicode):
+        return needle.replace('\r', '') == haystack.replace('\r', '')
     else:
         return needle == haystack
 
