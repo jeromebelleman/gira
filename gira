@@ -397,7 +397,11 @@ class Gira(cli.Cli):
 
                 # Perform transition
                 for transition in issues[issue]['transitions']:
-                    if issuesedit[issue]['transition']  == transition['name']:
+                    # No real need to check if any change is needed since
+                    # states and transitions have different names even if
+                    # they relate to each other and this will cause this
+                    # test to fail:
+                    if issuesedit[issue]['transition'] == transition['name']:
                         out = self.curl('/issue/%s/transitions' % issue, 'POST',
                                         {'transition': transition['id']})
                         if out and 'errors' in out:
