@@ -338,7 +338,7 @@ class Gira(cli.Cli):
                     print >> fhl
                     print >> fhl, "Comment from %s, %s:" % \
                         (comment['author']['name'], comment['updated'][:10])
-                    print >> fhl, comment['body'].replace('\r', '').strip()
+                    print >> fhl, comment['body'].replace('\r', '')
 
             if args.edit:
                 print >> fhl
@@ -383,16 +383,17 @@ class Gira(cli.Cli):
                             print >> sys.stderr, self.wrapper.fill(msg)
 
                 # Edit comments
+                comments = issues[issue]['fields']['comment']['comments']
                 for i, comment in enumerate(issuesedit[issue]['comments']):
-                    cid = \
-                        issues[issue]['fields']['comment']['comments'][i]['id']
-                    out = self.curl('/issue/%s/comment/%s' % (issue, cid),
-                                    'PUT', {'body': comment})
-                    # FIXME Refactor error printing (maybe in curl() itself)
-                    if out and 'errors' in out:
-                        for error in out['errors']:
-                            msg = '%s: %s' % (error, out['errors'][error])
-                            print >> sys.stderr, self.wrapper.fill(msg)
+                    if not subset(comment, comments[i]):
+                        cid = comments[i]['id']
+                        out = self.curl('/issue/%s/comment/%s' % (issue, cid),
+                                        'PUT', {'body': comment})
+                        # FIXME Refactor error printing (maybe in curl() itself)
+                        if out and 'errors' in out:
+                            for error in out['errors']:
+                                msg = '%s: %s' % (error, out['errors'][error])
+                                print >> sys.stderr, self.wrapper.fill(msg)
 
                 # Perform transition
                 for transition in issues[issue]['transitions']:
@@ -484,14 +485,23 @@ class Gira(cli.Cli):
 
             if RECOMM.match(line[:-1]):
                 state = OLDCOMM
+
+                # Strip last old comment since we know we won't have another one
                 if issue['comments']:
-                    issue['comments'][-1] = issue['comments'][-1].strip()
-                issue['comments'].append('')
+                    issue['comments'][-1]['body'] = \
+                        issue['comments'][-1]['body'][:-2]
+
+                issue['comments'].append({'body': ''})
                 continue
 
             if line[:-1] == 'New Comment?':
                 if 'description' in fields:
-                    fields['description'] = fields['description'].strip()
+                    fields['description'] = fields['description'][:-2]
+
+                # Strip last old comment since we know we won't have another one
+                if issue['comments']:
+                    issue['comments'][-1]['body'] = \
+                        issue['comments'][-1]['body'][:-2]
 
                 issue['comment'] = ''
                 state = COMM
@@ -508,7 +518,7 @@ class Gira(cli.Cli):
             elif state == COMM:
                 issue['comment'] += line
             elif state == OLDCOMM:
-                issue['comments'][-1] += line
+                issue['comments'][-1]['body'] += line
 
         return issues
 
