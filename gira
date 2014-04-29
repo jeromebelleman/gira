@@ -1,4 +1,5 @@
 #! /usr/bin/env python
+# coding=utf-8
 
 import sys
 reload(sys)
@@ -31,6 +32,16 @@ RECREA = re.compile('^Created: +(?P<crea>.+) +Security: +(?P<sec>.*)$')
 REUPDA = re.compile('^Updated: +(?P<upda>.+) +Assignee: +(?P<asn>.*)$')
 RERESO = re.compile('^Resolved: +(?P<reso>.+) +Reporter: +(?P<rep>.*)$')
 RECOMM = re.compile('^Comment from \w+, \S+:$')
+
+def values(issues, key, child=''):
+    return [child + key,
+            issues[key]['asn'],
+            issues[key]['rep'],
+            issues[key]['components'],
+            issues[key]['versions'],
+            issues[key]['status'],
+            issues[key]['summary'],
+           ]
 
 def subset(needle, haystack):
     if isinstance(needle, list) and isinstance(haystack, list):
@@ -149,45 +160,61 @@ class Gira(cli.Cli):
         tempfhl.close()
 
     def issues(self, query, maxresults):
-        rows = [["KEY",
-                 "ASSIGNEE",
-                 "REPORTER",
-                 "COMPONENTS",
-                 "VERSIONS",
-                 "STATUS",
-                 "SUMMARY",
-                ]]
         try:
+            # Collect issues and their relationships
             result = self.search(query, maxresults)
+            issues = {}
             for issue in result['issues']:
+                # Key
+                key = issue['key']
+                issues[key] = {}
+
                 # Fields
                 fields = issue['fields']
 
                 asn = fields['assignee']
-                asn = asn['name'] if asn else ''
+                issues[key]['asn'] = asn['name'] if asn else ''
 
-                components = ' '.join([com['name']
-                                       for com in fields['components']])
+                issues[key]['components'] = \
+                    ' '.join([com['name'] for com in fields['components']])
 
-                versions = ' '.join([ver['name']
-                                     for ver in fields['fixVersions']])
+                issues[key]['versions'] = \
+                    ' '.join([ver['name'] for ver in fields['fixVersions']])
 
                 rep = fields['reporter']
-                rep = rep['name'] if rep else ''
+                issues[key]['rep'] = rep['name'] if rep else ''
 
-                status = fields['status']['name']
+                issues[key]['status'] = fields['status']['name']
 
-                summary = fields['summary']
+                issues[key]['summary'] = fields['summary'].strip()
 
-                # Add row
-                rows.append([issue['key'],
-                             asn,
-                             rep,
-                             components,
-                             versions,
-                             status,
-                             summary.strip(),
-                            ])
+                issues[key]['subtasks'] = \
+                    [subtask['key'] for subtask in fields['subtasks']]
+
+                issues[key]['parent'] = 'parent' in fields
+
+            # Arrange issues in table
+            rows = [["KEY",
+                     "ASSIGNEE",
+                     "REPORTER",
+                     "COMPONENTS",
+                     "VERSIONS",
+                     "STATUS",
+                     "SUMMARY",
+                    ]]
+            for key in issues:
+                subtasks = issues[key]['subtasks']
+                if subtasks or not issues[key]['parent']:
+                    # Add row
+                    rows.append(values(issues, key))
+
+                    if subtasks:
+                        # Add subtasks
+                        for subtask in subtasks[:-1]:
+                            rows.append(values(issues, subtask, '├─>'))
+                        rows.append(values(issues, subtasks[-1], '└─>'))
+
+            # Print table
             tempfhl = open(self.temp, 'w')
             for fhl in sys.stdout, tempfhl:
                 tab.tab(rows, spacing=2,
@@ -534,7 +561,7 @@ class Gira(cli.Cli):
     def run_debug(self, args):
         jsonoutput = self.curl(args.resource)
         tempfhl = open(self.temp, 'w')
-        self.tempfhl.write(pprint.pformat(jsonoutput))
+        tempfhl.write(pprint.pformat(jsonoutput))
         tempfhl.close()
         pprint.pprint(jsonoutput)
 
