@@ -142,10 +142,11 @@ class Gira(cli.Cli):
             return
 
         # Report
-        self.tempreset()
-        for fhl in sys.stdout, self.temp:
+        tempfhl = open(self.temp, 'w')
+        for fhl in sys.stdout, tempfhl:
             for version in sorted(versions):
                 print >> fhl, version
+        tempfhl.close()
 
     def issues(self, query, maxresults):
         rows = [["KEY",
@@ -187,10 +188,11 @@ class Gira(cli.Cli):
                              status,
                              summary.strip(),
                             ])
-            self.tempreset()
-            for fhl in sys.stdout, self.temp:
+            tempfhl = open(self.temp, 'w')
+            for fhl in sys.stdout, tempfhl:
                 tab.tab(rows, spacing=2,
                         maxw=[None, None, None, 5, 8, 6, 26], fhl=fhl)
+            tempfhl.close()
         except KeyError:
             # No matching issue
             for msg in result['errorMessages']:
@@ -235,10 +237,11 @@ class Gira(cli.Cli):
             return
 
         # Report
-        self.tempreset()
-        for fhl in sys.stdout, self.temp:
+        tempfhl = open(self.temp, 'w')
+        for fhl in sys.stdout, tempfhl:
             for component in sorted(components):
                 print >> fhl, component
+        tempfhl.close()
 
     def run_search(self, args):
         jql = ['"%s"' % word if ' ' in word else word for word in args.jql]
@@ -247,9 +250,10 @@ class Gira(cli.Cli):
     def run_projects(self, args):
         projects = [[prj['name'], prj['key']] for prj in self.curl('/project')]
         projects.insert(0, ["PROJECT", "KEY"])
-        self.tempreset()
-        for fhl in sys.stdout, self.temp:
+        tempfhl = open(self.temp, 'w')
+        for fhl in sys.stdout, tempfhl:
             tab.tab(projects, fhl=fhl)
+        tempfhl.close()
 
     def run_use(self, args):
         for project in self.curl('/project'):
@@ -261,7 +265,6 @@ class Gira(cli.Cli):
             print >> sys.stderr, args.project + ": No such project"
 
     def run_issue(self, args):
-        self.tempreset()
         temp = tempfile.NamedTemporaryFile(prefix='issue-', dir=self.directory)
 
         if args.edit:
@@ -530,8 +533,9 @@ class Gira(cli.Cli):
 
     def run_debug(self, args):
         jsonoutput = self.curl(args.resource)
-        self.tempreset()
-        self.temp.write(pprint.pformat(jsonoutput))
+        tempfhl = open(self.temp, 'w')
+        self.tempfhl.write(pprint.pformat(jsonoutput))
+        tempfhl.close()
         pprint.pprint(jsonoutput)
 
 def main():
