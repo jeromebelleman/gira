@@ -303,84 +303,8 @@ class Gira(cli.Cli):
         for key in args.key:
             issue = self.curl('/issue/%s?expand=transitions' % key)
             issues[key] = issue
-            fields = issue['fields']
-            transs = [trans['name'] for trans in issue['transitions']]
 
-            # Header
-            print >> fhl, ">>> %s/%s %s" % (fields['project']['name'],
-                                            issue['key'],
-                                            fields['summary'])
-
-            # Type and status
-            fmt = "Type:       {0:%d} Status:     {1} # {2}" % WIDTH
-            print >> fhl, fmt.format(fields['issuetype']['name'],
-                                     fields['status']['name'],
-                                     ', '.join(transs))
-
-            # Priority and resolution
-            priority = fields['priority']
-            resolution = fields['resolution']
-            fmt = "Priority:   {0:%d} Resolution: {1}" % WIDTH
-            print >> fhl, fmt.format(priority['name'] if priority else '',
-                                     resolution['name'] if resolution else '')
-
-            # Components and versions)
-            compvers = enumerate(itertools.izip_longest(fields['components'],
-                                                        fields['fixVersions']))
-            for i, (component, version) in compvers:
-                if component and version:
-                    fmt = "Component:  {0:%d} Version:    {1}" % WIDTH
-                    values = (component['name'], version['name'])
-                elif component:
-                    fmt = "Component:  {0:%d}" % WIDTH
-                    values = (component['name'],)
-                elif version:
-                    values = ('', version['name'],)
-                    fmt = "            {0:%d} Version:    {1}" % WIDTH
-                print >> fhl, fmt.format(*values)
-
-            # Creation date and security
-            fmt =  "Created:    {0:%d} Security:   {1}" % WIDTH
-            print >> fhl, fmt.format(fields['created'][:10],
-                                     fields['security']['name'])
-
-            # Update date and assignee
-            asn = fields['assignee']
-            asn = asn['name'] if asn else ''
-            fmt =  "Updated:    {0:%d} Assignee:   {1}" % WIDTH
-            print >> fhl, fmt.format(fields['updated'][:10], asn)
-
-            # Resolution date and reporter
-            resdate = fields['resolutiondate']
-            fmt =  "Resolved:   {0:%d} Reporter:   {1}" % WIDTH
-            print >> fhl, \
-                fmt.format(resdate[:10] if resdate else '',
-                           fields['reporter']['name'])
-
-            # Description
-            if fields['description']:
-                print >> fhl
-                print >> fhl, "Description:"
-                print >> fhl, fields['description'].replace('\r', '')
-
-            # Comments
-            if fields['comment']['comments']:
-                for i, comment in enumerate(fields['comment']['comments']):
-                    print >> fhl
-                    print >> fhl, "Comment from %s, %s:" % \
-                        (comment['author']['name'], comment['updated'][:10])
-                    print >> fhl, comment['body'].replace('\r', '')
-
-            if args.edit:
-                print >> fhl
-                print >> fhl, "New Comment?"
-                print >> fhl
-
-            # Footer
-            print >> fhl, "<<< %s/%s %s" % (fields['project']['name'],
-                                            issue['key'],
-                                            fields['summary'])
-            print >> fhl
+            self.form(fhl, issue, args.edit)
 
         if args.edit:
             # Open page file in Vim
@@ -557,6 +481,119 @@ class Gira(cli.Cli):
                 issue['comments'][-1]['body'] += line
 
         return issues
+
+    def form(self, fhl, issue, edit):
+        fields = issue['fields']
+        transs = [trans['name'] for trans in issue['transitions']]
+
+        # Header
+        print >> fhl, ">>> %s/%s %s" % (fields['project']['name'],
+                                        issue['key'],
+                                        fields['summary'])
+
+        # Type and status
+        if edit:
+            fmt = "Type:       {0:%d} Status:     {1} # {2}" % WIDTH
+            print >> fhl, fmt.format(fields['issuetype']['name'],
+                                     fields['status']['name'],
+                                     ', '.join(transs))
+        else:
+            fmt = "Type:       {0:%d} Status:     {1}" % WIDTH
+            print >> fhl, fmt.format(fields['issuetype']['name'],
+                                     fields['status']['name'])
+
+        # Priority and resolution
+        priority = fields['priority']
+        resolution = fields['resolution']
+        fmt = "Priority:   {0:%d} Resolution: {1}" % WIDTH
+        print >> fhl, fmt.format(priority['name'] if priority else '',
+                                 resolution['name'] if resolution else '')
+
+        # Components and versions)
+        compvers = enumerate(itertools.izip_longest(fields['components'],
+                                                    fields['fixVersions']))
+        for i, (component, version) in compvers:
+            if component and version:
+                fmt = "Component:  {0:%d} Version:    {1}" % WIDTH
+                values = (component['name'], version['name'])
+            elif component:
+                fmt = "Component:  {0:%d}" % WIDTH
+                values = (component['name'],)
+            elif version:
+                values = ('', version['name'],)
+                fmt = "            {0:%d} Version:    {1}" % WIDTH
+            print >> fhl, fmt.format(*values)
+
+        # Creation date and security
+        fmt =  "Created:    {0:%d} Security:   {1}" % WIDTH
+        print >> fhl, fmt.format(fields['created'][:10],
+                                 fields['security']['name'])
+
+        # Update date and assignee
+        asn = fields['assignee']
+        asn = asn['name'] if asn else ''
+        fmt =  "Updated:    {0:%d} Assignee:   {1}" % WIDTH
+        print >> fhl, fmt.format(fields['updated'][:10], asn)
+
+        # Resolution date and reporter
+        resdate = fields['resolutiondate']
+        fmt =  "Resolved:   {0:%d} Reporter:   {1}" % WIDTH
+        print >> fhl, \
+            fmt.format(resdate[:10] if resdate else '',
+                       fields['reporter']['name'])
+
+        # Description
+        if fields['description']:
+            print >> fhl
+            print >> fhl, "Description:"
+            print >> fhl, fields['description'].replace('\r', '')
+
+        # Comments
+        if fields['comment']['comments']:
+            for i, comment in enumerate(fields['comment']['comments']):
+                print >> fhl
+                print >> fhl, "Comment from %s, %s:" % \
+                    (comment['author']['name'], comment['updated'][:10])
+                print >> fhl, comment['body'].replace('\r', '')
+
+        if edit:
+            print >> fhl
+            print >> fhl, "New Comment?"
+            print >> fhl
+
+        # Footer
+        print >> fhl, "<<< %s/%s %s" % (fields['project']['name'],
+                                        issue['key'],
+                                        fields['summary'])
+        print >> fhl
+
+    def run_create(self, args):
+        # Write form
+        temp = tempfile.NamedTemporaryFile(prefix='issue-', dir=self.directory)
+        issue = {'fields': {'assignee': {'name': ''},
+                            'comment': {'comments': []},
+                            'components': [{'name': '...'}],
+                            'created': 'Now',
+                            'description': '...',
+                            'fixVersions': [{'name': '...'}],
+                            'issuetype': {'name': '...'},
+                            'priority': {'name': '...'},
+                            'project': {'name': self.project},
+                            'reporter': {'name': os.environ['USER']},
+                            'resolution': {'name': ''},
+                            'resolutiondate': '',
+                            'security': {'name': 'Internal Data'},
+                            'status': {'name': 'Open'},
+                            'summary': '...',
+                            'updated': 'Now'},
+                 'key': self.project + '-???',
+                 'transitions': []}
+        self.form(temp, issue, False)
+
+        # Open page file in Vim
+        temp.flush()
+        subprocess.call(['vim', '-S', self.directory + '/vimrc', temp.name])
+        self.wintitle()
 
     def run_debug(self, args):
         jsonoutput = self.curl(args.resource)
