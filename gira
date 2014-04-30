@@ -24,7 +24,8 @@ WIDTH = 20
 
 COMP, DESC, OLDCOMM, COMM = range(4)
 
-REHEAD = re.compile('^>>> (?P<proj>[^/]+)/(?P<key>[A-Z]+-\d+) (?P<summary>.*)$')
+REHEAD = re.compile('^>>> (?P<proj>[^/]+)/(?P<key>[A-Z]+-\S+) (?P<summary>.*)$')
+REFOOT = re.compile('^<<< [^/]+/[A-Z]+-\S+ .*$')
 RETYPE = re.compile('^Type: +(?P<type>.+) +Status: +(?P<stat>.*) # .*$')
 REPRIO = re.compile('^Priority: +(?P<prio>.+) +Resolution: +(?P<res>.*)$')
 RECOMP = re.compile('^(Component: +(?P<comp>.+?))?( +Version: +(?P<ver>.+))?$')
@@ -374,7 +375,7 @@ class Gira(cli.Cli):
             # Parse line
             match = REHEAD.match(line[:-1])
             if match:
-                issue = {'fields': {}, 'comment': {}, 'comments': [],
+                issue = {'fields': {}, 'comment': '', 'comments': [],
                          'transition': {}}
                 fields = issue['fields']
 
@@ -463,11 +464,10 @@ class Gira(cli.Cli):
                     issue['comments'][-1]['body'] = \
                         issue['comments'][-1]['body'][:-2]
 
-                issue['comment'] = ''
                 state = COMM
                 continue
 
-            if line[:-1] == footer:
+            if REFOOT.match(line[:-1]):
                 issue['comment'] = issue['comment'].strip()
                 state = None
                 continue
@@ -594,6 +594,14 @@ class Gira(cli.Cli):
         temp.flush()
         subprocess.call(['vim', '-S', self.directory + '/vimrc', temp.name])
         self.wintitle()
+
+        # Parse date from page file
+        tempvim = open(temp.name)
+        issuesedit = self.parse(tempvim)
+        tempvim.close()
+
+        pprint.pprint(issuesedit)
+
 
     def run_debug(self, args):
         jsonoutput = self.curl(args.resource)
