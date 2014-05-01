@@ -26,7 +26,7 @@ COMP, DESC, OLDCOMM, COMM = range(4)
 
 REHEAD = re.compile('^>>> (?P<proj>[^/]+)/(?P<key>[A-Z]+-\S+) (?P<summary>.*)$')
 REFOOT = re.compile('^<<< [^/]+/[A-Z]+-\S+ .*$')
-RETYPE = re.compile('^Type: +(?P<type>.+) +Status: +(?P<stat>.*) # .*$')
+RETYPE = re.compile('^Type: +(?P<type>.+) +Status: +(?P<stat>.*)(?: # .*)?$')
 REPRIO = re.compile('^Priority: +(?P<prio>.+) +Resolution: +(?P<res>.*)$')
 RECOMP = re.compile('^(Component: +(?P<comp>.+?))?( +Version: +(?P<ver>.+))?$')
 RECREA = re.compile('^Created: +(?P<crea>.+) +Security: +(?P<sec>.*)$')
@@ -382,8 +382,8 @@ class Gira(cli.Cli):
                 fields = issue['fields']
 
                 key = match.group('key')
+                fields['project'] = {'key': match.group('proj')}
                 summary = match.group('summary')
-                footer = '<<< %s/%s %s' % (match.group('proj'), key, summary)
 
                 issues.append((key, issue))
                 fields['summary'] = summary
@@ -602,7 +602,13 @@ class Gira(cli.Cli):
         issuesedit = self.parse(tempvim)
         tempvim.close()
 
-        pprint.pprint(issuesedit)
+        # Write issue data to JIRA
+        for key, fields in issuesedit:
+            out = self.curl('/issue', 'POST', {'fields': fields['fields']})
+            if out and 'errors' in out:
+                for error in out['errors']:
+                    msg = '%s: %s' % (error, out['errors'][error])
+                    print >> sys.stderr, self.wrapper.fill(msg)
 
     def run_debug(self, args):
         jsonoutput = self.curl(args.resource)
