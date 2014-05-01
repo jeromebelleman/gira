@@ -543,9 +543,9 @@ class Gira(cli.Cli):
                        fields['reporter']['name'])
 
         # Description
+        print >> fhl
+        print >> fhl, "Description:"
         if fields['description']:
-            print >> fhl
-            print >> fhl, "Description:"
             print >> fhl, fields['description'].replace('\r', '')
 
         # Comments
