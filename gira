@@ -243,8 +243,13 @@ class Gira(cli.Cli):
         # Report
         tempfhl = open(self.temp, 'w')
         if group == 'version':
-            # TODO
-            pass
+            for version in versions:
+                rows = [["KEY", "ASSIGNEE", "REPORTER", "COMPONENTS",
+                         "STATUS", "SUMMARY"]]
+                print >> tempfhl, version
+                table(tempfhl, rows, versions[version],
+                      ['asn', 'rep', 'components', 'status', 'summary'])
+                print >> tempfhl
         elif group == 'component':
             for component in components:
                 rows = [["KEY", "ASSIGNEE", "REPORTER", "VERSIONS",
