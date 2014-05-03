@@ -40,7 +40,14 @@ RECOMM = re.compile('^Comment from \w+, \S+:$')
 RELINE = re.compile('^(?P<child> +|(?:└|├)─>)?(?P<key>[A-Z]+-\d+) +.*$')
 
 def values(issues, key, fields, child=''):
-    return [child + key] + [issues[key][field] for field in fields]
+    values = [child + key]
+    for field in fields:
+        if isinstance(issues[key][field], list):
+            values.append(' ,'.join(issues[key][field]))
+        else:
+            values.append(issues[key][field])
+
+    return values
 
 def subset(needle, haystack):
     if isinstance(needle, list) and isinstance(haystack, list):
@@ -185,11 +192,9 @@ class Gira(cli.Cli):
             asn = fields['assignee']
             iss['asn'] = asn['name'] if asn else ''
 
-            iss['components'] = \
-                ', '.join([com['name'] for com in fields['components']])
+            iss['components'] = [com['name'] for com in fields['components']]
 
-            iss['versions'] = \
-                ', '.join([ver['name'] for ver in fields['fixVersions']])
+            iss['versions'] = [ver['name'] for ver in fields['fixVersions']]
 
             rep = fields['reporter']
             iss['rep'] = rep['name'] if rep else ''
@@ -198,22 +203,24 @@ class Gira(cli.Cli):
 
             iss['summary'] = fields['summary'].strip()
 
-            iss['subtasks'] = \
-                [subtask['key'] for subtask in fields['subtasks']]
+            iss['subtasks'] = [subtask['key'] for subtask in fields['subtasks']]
 
-            iss['parent'] = \
-                fields['parent'] if 'parent' in fields else None
+            iss['parent'] = fields['parent'] if 'parent' in fields else None
 
             if group == 'version':
-                if iss['versions'] in versions:
-                    versions[iss['versions']][issue['key']] = iss
+                versstr = repr(iss['versions'])
+                if versstr in versions:
+                    versions[versstr]['issues'][issue['key']] = iss
                 else:
-                    versions[iss['versions']] = {issue['key']: iss}
+                    versions[versstr] = {'versions': iss['versions'],
+                                         'issues': {issue['key']: iss}}
             elif group == 'component':
-                if iss['components'] in components:
-                    components[iss['components']][issue['key']] = iss
+                compstr = repr(iss['components'])
+                if compstr in components:
+                    components[compstr]['issues'][issue['key']] = iss
                 else:
-                    components[iss['components']] = {issue['key']: iss}
+                    components[compstr] = {'components': iss['components'],
+                                           'issues': {issue['key']: iss}}
             else:
                 issues[issue['key']] = iss
 
@@ -244,18 +251,30 @@ class Gira(cli.Cli):
         tempfhl = open(self.temp, 'w')
         if group == 'version':
             for version in versions:
+                # Create new table
                 rows = [["KEY", "ASSIGNEE", "REPORTER", "COMPONENTS",
                          "STATUS", "SUMMARY"]]
-                print >> tempfhl, '# ' + version
-                table(tempfhl, rows, versions[version],
+
+                # Write header
+                for vers in versions[version]['versions']:
+                    print >> tempfhl, '# ' + vers
+
+                # Write table
+                table(tempfhl, rows, versions[version]['issues'],
                       ['asn', 'rep', 'components', 'status', 'summary'])
                 print >> tempfhl
         elif group == 'component':
             for component in components:
+                # Create new table
                 rows = [["KEY", "ASSIGNEE", "REPORTER", "VERSIONS",
                          "STATUS", "SUMMARY"]]
-                print >> tempfhl, '# ' + component
-                table(tempfhl, rows, components[component],
+
+                # Write header
+                for comp in components[component]['components']:
+                    print >> tempfhl, '# ' + comp
+
+                # Write table
+                table(tempfhl, rows, components[component]['issues'],
                       ['asn', 'rep', 'versions', 'status', 'summary'])
                 print >> tempfhl
         else:
