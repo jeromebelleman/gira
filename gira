@@ -37,7 +37,9 @@ RERESO = re.compile('^Resolved: +(?P<reso>.+) +Reporter: +(?P<rep>.*)$')
 RECOMM = re.compile('^Comment from \w+, \S+:$')
 
 # Index
-RELINE = re.compile('^(?P<child> +|(?:└|├)─>)?(?P<key>[A-Z]+-\d+) +.*$')
+REISSU = re.compile('^(?:(?:└|├)─>)?(?P<key>[A-Z]+-\d+) +.*$')
+REHEAD = re.compile('^#\s+(?P<grouping>.*)$')
+REBLAN = re.compile('^\s*$')
 
 def values(issues, key, fields, child=''):
     values = [child + key]
@@ -91,7 +93,7 @@ class Gira(cli.Cli):
         self.issuesparser.add_argument('-p', '--project')
         self.issuesparser.add_argument('-c', '--component')
         self.issuesparser.add_argument('-g', '--group',
-                                       choices=['version', 'component'])
+                                       choices=['versions', 'components'])
         self.issuesparser.add_argument('-v', '--version', nargs='+')
         self.issuesparser.add_argument('-m', '--maxresults', type=int,
                                        default=MAXRESULTS)
@@ -178,9 +180,9 @@ class Gira(cli.Cli):
                 print >> sys.stderr, self.wrapper.fill(msg)
             return
 
-        if group == 'version': versions = {}
-        elif group == 'component': components = {}
-        else: issues = {}
+        if group == 'versions': versions = {}
+        elif group == 'components': components = {}
+        issues = {} # Need this structure anyway to subset later on
 
         for issue in result['issues']:
             # Key
@@ -207,22 +209,21 @@ class Gira(cli.Cli):
 
             iss['parent'] = fields['parent'] if 'parent' in fields else None
 
-            if group == 'version':
+            if group == 'versions':
                 versstr = repr(iss['versions'])
                 if versstr in versions:
                     versions[versstr]['issues'][issue['key']] = iss
                 else:
                     versions[versstr] = {'versions': iss['versions'],
                                          'issues': {issue['key']: iss}}
-            elif group == 'component':
+            elif group == 'components':
                 compstr = repr(iss['components'])
                 if compstr in components:
                     components[compstr]['issues'][issue['key']] = iss
                 else:
                     components[compstr] = {'components': iss['components'],
                                            'issues': {issue['key']: iss}}
-            else:
-                issues[issue['key']] = iss
+            issues[issue['key']] = iss
 
         def table(tempfhl, rows, issues, fields):
             # Arrange issues for table
@@ -249,7 +250,7 @@ class Gira(cli.Cli):
 
         # Report
         tempfhl = open(self.temp, 'w')
-        if group == 'version':
+        if group == 'versions':
             for version in versions:
                 # Create new table
                 rows = [["KEY", "ASSIGNEE", "REPORTER", "COMPONENTS",
@@ -263,7 +264,7 @@ class Gira(cli.Cli):
                 table(tempfhl, rows, versions[version]['issues'],
                       ['asn', 'rep', 'components', 'status', 'summary'])
                 print >> tempfhl
-        elif group == 'component':
+        elif group == 'components':
             for component in components:
                 # Create new table
                 rows = [["KEY", "ASSIGNEE", "REPORTER", "VERSIONS",
@@ -284,9 +285,7 @@ class Gira(cli.Cli):
                                           'versions', 'status', 'summary'])
         tempfhl.close()
 
-
-        # FIXME Need to find out if we need that but I'd rather we didn't
-        # return issues
+        return issues
 
     def run_issues(self, args):
         if not self.project:
@@ -308,25 +307,26 @@ class Gira(cli.Cli):
                          self.temp])
         self.wintitle()
 
-        # Parse data from issues file
-        tempvim = open(self.temp)
-        issuesedit = self.parseissues(tempvim)
-        tempvim.close()
+        # Only update groups (for now)
+        if args.group:
+            # Parse data from issues file
+            tempvim = open(self.temp)
+            issuesedit = self.parseissues(tempvim, args.group)
+            tempvim.close()
 
-        # pprint.pprint(issues)
-        # pprint.pprint(issuesedit)
-
-        # Update things
-        # for key in issuesedit:
-        #     if not subset(issuesedit[key], issues[key]):
-        #         pprint.pprint(('/issue/' + key, {'fields': issuesedit[key]}))
-        #         # out = self.curl('/issue/' + key, 'PUT',
-        #         #                 {'fields': issuesedit[key]})
-        #         # print(out)
-        #         # if out and 'errors' in out:
-        #         #     for error in out['errors']:
-        #         #         msg = '%s: %s' % (error, out['errors'][error])
-        #         #         print >> sys.stderr, self.wrapper.fill(msg)
+            # Update issues
+            for key in issuesedit:
+                if not subset(issuesedit[key], issues[key]):
+                    groups = [{'name': group} for group in
+                              issuesedit[key][args.group]]
+                    fields = {'fields': {args.group
+                                         if args.group != 'versions'
+                                         else 'fixVersions': groups}}
+                    out = self.curl('/issue/' + key, 'PUT', fields)
+                    if out and 'errors' in out:
+                        for error in out['errors']:
+                            msg = '%s: %s' % (error, out['errors'][error])
+                            print >> sys.stderr, self.wrapper.fill(msg)
 
     def nickname(self, name):
         try:
@@ -573,25 +573,22 @@ class Gira(cli.Cli):
 
         return issues
 
-    def parseissues(self, temp):
+    def parseissues(self, temp, grouping):
         issues = {}
+        groups = []
         for line in temp:
-            match = RELINE.match(line)
+            # Is it an issue?
+            match = REISSU.match(line)
             if match:
-                if match.group('child'):
-                    issues[match.group('key')] = \
-                        {'parent':
-                            {'fields':
-                                {'issuetype': {'name': 'Technical Task'}},
-                             'key': lastparent}}
+                issues[match.group('key')] = {grouping: groups}
 
-                    # fields = {'key': match.group('key')}
-                    # issues[lastparent]['subtasks'].append(fields)
-                else:
-                    issues[match.group('key')] = {'parent': None}
-                    lastparent = match.group('key')
+            # Is it a header?
+            match = REHEAD.match(line)
+            if match:
+                groups.append(match.group('grouping'))
 
-                    # issues[lastparent] = {'subtasks': []}
+            # Is it a blank line?
+            if REBLAN.match(line): groups = []
 
         return issues
 
@@ -622,7 +619,7 @@ class Gira(cli.Cli):
         print >> fhl, fmt.format(priority['name'] if priority else '',
                                  resolution['name'] if resolution else '')
 
-        # Components and versions)
+        # Components and versions
         compvers = enumerate(itertools.izip_longest(fields['components'],
                                                     fields['fixVersions']))
         for i, (component, version) in compvers:
