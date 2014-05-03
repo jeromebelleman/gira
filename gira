@@ -23,7 +23,9 @@ MAXRESULTS = 50
 WIDTH = 20
 
 COMP, DESC, OLDCOMM, COMM = range(4)
+NONE, VERSION, COMPONENT = range(3) # Grouping
 
+# Fields
 REHEAD = re.compile('^>>> (?P<proj>[^/]+)/(?P<key>[A-Z]+-\S+) (?P<summary>.*)$')
 REFOOT = re.compile('^<<< [^/]+/[A-Z]+-\S+ .*$')
 RETYPE = re.compile('^Type: +(?P<type>.+) +Status: +(?P<stat>.*)(?: # .*)?$')
@@ -34,15 +36,11 @@ REUPDA = re.compile('^Updated: +(?P<upda>.+) +Assignee: +(?P<asn>.*)$')
 RERESO = re.compile('^Resolved: +(?P<reso>.+) +Reporter: +(?P<rep>.*)$')
 RECOMM = re.compile('^Comment from \w+, \S+:$')
 
-def values(issues, key, child=''):
-    return [child + key,
-            issues[key]['asn'],
-            issues[key]['rep'],
-            issues[key]['components'],
-            issues[key]['versions'],
-            issues[key]['status'],
-            issues[key]['summary'],
-           ]
+# Index
+RELINE = re.compile('^(?P<child> +|(?:└|├)─>)?(?P<key>[A-Z]+-\d+) +.*$')
+
+def values(issues, key, fields, child=''):
+    return [child + key] + [issues[key][field] for field in fields]
 
 def subset(needle, haystack):
     if isinstance(needle, list) and isinstance(haystack, list):
@@ -85,6 +83,8 @@ class Gira(cli.Cli):
 
         self.issuesparser.add_argument('-p', '--project')
         self.issuesparser.add_argument('-c', '--component')
+        self.issuesparser.add_argument('-g', '--group',
+                                       choices=['version', 'component'])
         self.issuesparser.add_argument('-v', '--version', nargs='+')
         self.issuesparser.add_argument('-m', '--maxresults', type=int,
                                        default=MAXRESULTS)
@@ -160,71 +160,109 @@ class Gira(cli.Cli):
                 print >> fhl, version
         tempfhl.close()
 
-    def issues(self, query, maxresults):
+    def issues(self, query, group, maxresults):
         try:
             # Collect issues and their relationships
             result = self.search(query, maxresults)
-            issues = {}
-            for issue in result['issues']:
-                # Key
-                key = issue['key']
-                issues[key] = {}
-
-                # Fields
-                fields = issue['fields']
-
-                asn = fields['assignee']
-                issues[key]['asn'] = asn['name'] if asn else ''
-
-                issues[key]['components'] = \
-                    ' '.join([com['name'] for com in fields['components']])
-
-                issues[key]['versions'] = \
-                    ' '.join([ver['name'] for ver in fields['fixVersions']])
-
-                rep = fields['reporter']
-                issues[key]['rep'] = rep['name'] if rep else ''
-
-                issues[key]['status'] = fields['status']['name']
-
-                issues[key]['summary'] = fields['summary'].strip()
-
-                issues[key]['subtasks'] = \
-                    [subtask['key'] for subtask in fields['subtasks']]
-
-                issues[key]['parent'] = 'parent' in fields
-
-            # Arrange issues in table
-            rows = [["KEY",
-                     "ASSIGNEE",
-                     "REPORTER",
-                     "COMPONENTS",
-                     "VERSIONS",
-                     "STATUS",
-                     "SUMMARY",
-                    ]]
-            for key in issues:
-                subtasks = issues[key]['subtasks']
-                if subtasks or not issues[key]['parent']:
-                    # Add row
-                    rows.append(values(issues, key))
-
-                    if subtasks:
-                        # Add subtasks
-                        for subtask in subtasks[:-1]:
-                            rows.append(values(issues, subtask, '├─>'))
-                        rows.append(values(issues, subtasks[-1], '└─>'))
-
-            # Print table
-            tempfhl = open(self.temp, 'w')
-            for fhl in sys.stdout, tempfhl:
-                tab.tab(rows, spacing=2,
-                        maxw=[None, None, None, 5, 8, 6, 26], fhl=fhl)
-            tempfhl.close()
+            # pprint.pprint(result)
         except KeyError:
             # No matching issue
             for msg in result['errorMessages']:
                 print >> sys.stderr, self.wrapper.fill(msg)
+            return
+
+        if group == 'version': versions = {}
+        elif group == 'component': components = {}
+        else: issues = {}
+
+        for issue in result['issues']:
+            # Key
+            iss = {}
+
+            # Fields
+            fields = issue['fields']
+
+            asn = fields['assignee']
+            iss['asn'] = asn['name'] if asn else ''
+
+            iss['components'] = \
+                ' '.join([com['name'] for com in fields['components']])
+
+            iss['versions'] = \
+                ' '.join([ver['name'] for ver in fields['fixVersions']])
+
+            rep = fields['reporter']
+            iss['rep'] = rep['name'] if rep else ''
+
+            iss['status'] = fields['status']['name']
+
+            iss['summary'] = fields['summary'].strip()
+
+            iss['subtasks'] = \
+                [subtask['key'] for subtask in fields['subtasks']]
+
+            iss['parent'] = \
+                fields['parent'] if 'parent' in fields else None
+
+            if group == 'version':
+                if iss['versions'] in versions:
+                    versions[iss['versions']][issue['key']] = iss
+                else:
+                    versions[iss['versions']] = {issue['key']: iss}
+            elif group == 'component':
+                if iss['components'] in components:
+                    components[iss['components']][issue['key']] = iss
+                else:
+                    components[iss['components']] = {issue['key']: iss}
+            else:
+                issues[issue['key']] = iss
+
+        def table(tempfhl, rows, issues, fields):
+            # Arrange issues for table
+            for key in issues:
+                issue = issues[key]
+                subtasks = issue['subtasks']
+                if not issue['parent'] or issue['parent']['key'] not in issues:
+                    # Add row
+                    rows.append(values(issues, key, fields))
+
+                    if subtasks:
+                        # Add subtasks
+                        for subtask in subtasks[:-1]:
+                            if subtask in issues:
+                                rows.append(values(issues, subtask,
+                                                   fields, '├─>'))
+                        if subtasks[-1] in issues:
+                            rows.append(values(issues, subtasks[-1],
+                                               fields, '└─>'))
+
+            # Print table
+            tab.tab(rows, spacing=2,
+                    maxw=[None, None, None, 5, 8, 6, 26], fhl=tempfhl)
+
+        # Report
+        tempfhl = open(self.temp, 'w')
+        if group == 'version':
+            # TODO
+            pass
+        elif group == 'component':
+            for component in components:
+                rows = [["KEY", "ASSIGNEE", "REPORTER", "VERSIONS",
+                         "STATUS", "SUMMARY"]]
+                print >> tempfhl, component
+                table(tempfhl, rows, components[component],
+                      ['asn', 'rep', 'versions', 'status', 'summary'])
+                print >> tempfhl
+        else:
+            rows = [["KEY", "ASSIGNEE", "REPORTER", "COMPONENTS",
+                     "VERSIONS", "STATUS", "SUMMARY"]]
+            table(tempfhl, rows, issues, ['asn', 'rep', 'components',
+                                          'versions', 'status', 'summary'])
+        tempfhl.close()
+
+
+        # FIXME Need to find out if we need that but I'd rather we didn't
+        # return issues
 
     def run_issues(self, args):
         if not self.project:
@@ -239,7 +277,31 @@ class Gira(cli.Cli):
         query += ' AND fixVersion = "%s"' % \
             ' '.join(args.version) if args.version else ''
 
-        self.issues(query, args.maxresults)
+        issues = self.issues(query, args.group, args.maxresults)
+
+        # Open page file in Vim
+        subprocess.call(['vim', '-S', self.directory + '/vimrc', self.temp])
+        self.wintitle()
+
+        # Parse data from issues file
+        tempvim = open(self.temp)
+        issuesedit = self.parseissues(tempvim)
+        tempvim.close()
+
+        # pprint.pprint(issues)
+        # pprint.pprint(issuesedit)
+
+        # Update things
+        # for key in issuesedit:
+        #     if not subset(issuesedit[key], issues[key]):
+        #         pprint.pprint(('/issue/' + key, {'fields': issuesedit[key]}))
+        #         # out = self.curl('/issue/' + key, 'PUT',
+        #         #                 {'fields': issuesedit[key]})
+        #         # print(out)
+        #         # if out and 'errors' in out:
+        #         #     for error in out['errors']:
+        #         #         msg = '%s: %s' % (error, out['errors'][error])
+        #         #         print >> sys.stderr, self.wrapper.fill(msg)
 
     def nickname(self, name):
         try:
@@ -293,9 +355,9 @@ class Gira(cli.Cli):
             print >> sys.stderr, args.project + ": No such project"
 
     def run_issue(self, args):
-        temp = tempfile.NamedTemporaryFile(prefix='issue-', dir=self.directory)
-
         if args.edit:
+            temp = tempfile.NamedTemporaryFile(prefix='issue-',
+                                               dir=self.directory)
             fhl = temp
         else:
             fhl = sys.stdout
@@ -303,6 +365,7 @@ class Gira(cli.Cli):
         issues = {}
         for key in args.key:
             issue = self.curl('/issue/%s?expand=transitions' % key)
+            pprint.pprint(issue)
             issues[key] = issue
 
             self.form(fhl, issue, args.edit)
@@ -313,61 +376,61 @@ class Gira(cli.Cli):
             subprocess.call(['vim', '-S', self.directory + '/vimrc', temp.name])
             self.wintitle()
 
-            # Parse date from page file
+            # Parse data from issue file
             tempvim = open(temp.name)
-            issuesedit = self.parse(tempvim)
+            issuesedit = self.parseissue(tempvim)
             tempvim.close()
 
             for key, fields in issuesedit:
-                 # Update fields
-                 if not subset(fields['fields'], issues[key]['fields']):
-                     out = self.curl('/issue/' + key, 'PUT',
-                                     {'fields': fields['fields']})
-                     if out and 'errors' in out:
-                         for error in out['errors']:
-                             msg = '%s: %s' % (error, out['errors'][error])
-                             print >> sys.stderr, self.wrapper.fill(msg)
+                # Update fields
+                if not subset(fields['fields'], issues[key]['fields']):
+                    out = self.curl('/issue/' + key, 'PUT',
+                                    {'fields': fields['fields']})
+                    if out and 'errors' in out:
+                        for error in out['errors']:
+                            msg = '%s: %s' % (error, out['errors'][error])
+                            print >> sys.stderr, self.wrapper.fill(msg)
 
-                 # Add comment
-                 comment = fields['comment']
-                 if comment:
-                     out = self.curl('/issue/%s/comment' % key, 'POST',
-                                     {'body': comment})
-                     if out and 'errors' in out:
-                         for error in out['errors']:
-                             msg = '%s: %s' % (error, out['errors'][error])
-                             print >> sys.stderr, self.wrapper.fill(msg)
+                # Add comment
+                comment = fields['comment']
+                if comment:
+                    out = self.curl('/issue/%s/comment' % key, 'POST',
+                                    {'body': comment})
+                    if out and 'errors' in out:
+                        for error in out['errors']:
+                            msg = '%s: %s' % (error, out['errors'][error])
+                            print >> sys.stderr, self.wrapper.fill(msg)
 
-                 # Edit comments
-                 comments = issues[key]['fields']['comment']['comments']
-                 for i, comment in enumerate(fields['comments']):
-                     if not subset(comment, comments[i]):
-                         cid = comments[i]['id']
-                         out = self.curl('/issue/%s/comment/%s' % (key, cid),
-                                         'PUT', {'body': comment})
-                         # FIXME Refactor error printing (maybe in curl() itself)
-                         if out and 'errors' in out:
-                             for error in out['errors']:
-                                 msg = '%s: %s' % (error, out['errors'][error])
-                                 print >> sys.stderr, self.wrapper.fill(msg)
+                # Edit comments
+                comments = issues[key]['fields']['comment']['comments']
+                for i, comment in enumerate(fields['comments']):
+                    if not subset(comment, comments[i]):
+                        cid = comments[i]['id']
+                        out = self.curl('/issue/%s/comment/%s' % (key, cid),
+                                        'PUT', {'body': comment})
+                        # FIXME Refactor error printing (maybe in curl() itself)
+                        if out and 'errors' in out:
+                            for error in out['errors']:
+                                msg = '%s: %s' % (error, out['errors'][error])
+                                print >> sys.stderr, self.wrapper.fill(msg)
 
-                 # Perform transition
-                 for transition in issues[key]['transitions']:
-                     # No real need to check if any change is needed since
-                     # states and transitions have different names even if
-                     # they relate to each other and this will cause this
-                     # test to fail:
-                     if fields['transition'] == transition['name']:
-                         out = self.curl('/issue/%s/transitions' % key, 'POST',
-                                         {'transition': transition['id']})
-                         if out and 'errors' in out:
-                             for error in out['errors']:
-                                 msg = '%s: %s' % (error, out['errors'][error])
-                                 print >> sys.stderr, self.wrapper.fill(msg)
-                         break
+                # Perform transition
+                for transition in issues[key]['transitions']:
+                    # No real need to check if any change is needed since
+                    # states and transitions have different names even if
+                    # they relate to each other and this will cause this
+                    # test to fail:
+                    if fields['transition'] == transition['name']:
+                        out = self.curl('/issue/%s/transitions' % key, 'POST',
+                                        {'transition': transition['id']})
+                        if out and 'errors' in out:
+                            for error in out['errors']:
+                                msg = '%s: %s' % (error, out['errors'][error])
+                                print >> sys.stderr, self.wrapper.fill(msg)
+                        break
         temp.close()
 
-    def parse(self, temp):
+    def parseissue(self, temp):
         # A list of (key, {}) rather than a dictionary keyed on the issue
         # key so we can issues with the same key, as when we create many in
         # one go (e.g. literally 'AA-???').
@@ -481,6 +544,28 @@ class Gira(cli.Cli):
                 issue['comment'] += line
             elif state == OLDCOMM:
                 issue['comments'][-1]['body'] += line
+
+        return issues
+
+    def parseissues(self, temp):
+        issues = {}
+        for line in temp:
+            match = RELINE.match(line)
+            if match:
+                if match.group('child'):
+                    issues[match.group('key')] = \
+                        {'parent':
+                            {'fields':
+                                {'issuetype': {'name': 'Technical Task'}},
+                             'key': lastparent}}
+
+                    # fields = {'key': match.group('key')}
+                    # issues[lastparent]['subtasks'].append(fields)
+                else:
+                    issues[match.group('key')] = {'parent': None}
+                    lastparent = match.group('key')
+
+                    # issues[lastparent] = {'subtasks': []}
 
         return issues
 
@@ -599,7 +684,7 @@ class Gira(cli.Cli):
 
         # Parse date from page file
         tempvim = open(temp.name)
-        issuesedit = self.parse(tempvim)
+        issuesedit = self.parseissue(tempvim)
         tempvim.close()
 
         # Write issue data to JIRA
