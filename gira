@@ -186,10 +186,10 @@ class Gira(cli.Cli):
             iss['asn'] = asn['name'] if asn else ''
 
             iss['components'] = \
-                ' '.join([com['name'] for com in fields['components']])
+                ', '.join([com['name'] for com in fields['components']])
 
             iss['versions'] = \
-                ' '.join([ver['name'] for ver in fields['fixVersions']])
+                ', '.join([ver['name'] for ver in fields['fixVersions']])
 
             rep = fields['reporter']
             iss['rep'] = rep['name'] if rep else ''
@@ -246,7 +246,7 @@ class Gira(cli.Cli):
             for version in versions:
                 rows = [["KEY", "ASSIGNEE", "REPORTER", "COMPONENTS",
                          "STATUS", "SUMMARY"]]
-                print >> tempfhl, version
+                print >> tempfhl, '# ' + version
                 table(tempfhl, rows, versions[version],
                       ['asn', 'rep', 'components', 'status', 'summary'])
                 print >> tempfhl
@@ -254,7 +254,7 @@ class Gira(cli.Cli):
             for component in components:
                 rows = [["KEY", "ASSIGNEE", "REPORTER", "VERSIONS",
                          "STATUS", "SUMMARY"]]
-                print >> tempfhl, component
+                print >> tempfhl, '# ' + component
                 table(tempfhl, rows, components[component],
                       ['asn', 'rep', 'versions', 'status', 'summary'])
                 print >> tempfhl
@@ -285,7 +285,8 @@ class Gira(cli.Cli):
         issues = self.issues(query, args.group, args.maxresults)
 
         # Open page file in Vim
-        subprocess.call(['vim', '-S', self.directory + '/vimrc', self.temp])
+        subprocess.call(['vim', '-S', self.directory + '/issues.vimrc',
+                         self.temp])
         self.wintitle()
 
         # Parse data from issues file
