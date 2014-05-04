@@ -670,22 +670,21 @@ class Gira(cli.Cli):
 
     def run_create(self, args):
         # Write form
-        temp = tempfile.NamedTemporaryFile(prefix='issue-', dir=self.directory)
         issue = {'fields': {'assignee': {'name': ''},
                             'comment': {'comments': []},
-                            'components': [{'name': '...'}],
+                            'components': [{'name': 'TODO'}],
                             'created': 'Now',
-                            'description': '...',
-                            'fixVersions': [{'name': '...'}],
-                            'issuetype': {'name': '...'},
-                            'priority': {'name': '...'},
+                            'description': 'TODO',
+                            'fixVersions': [{'name': 'TODO'}],
+                            'issuetype': {'name': 'TODO'},
+                            'priority': {'name': 'TODO'},
                             'project': {'name': self.project},
                             'reporter': {'name': os.environ['USER']},
                             'resolution': {'name': ''},
                             'resolutiondate': '',
                             'security': {'name': 'Internal Data'},
                             'status': {'name': 'Open'},
-                            'summary': '...',
+                            'summary': 'TODO',
                             'updated': 'Now'},
                  'key': self.project + '-???',
                  'transitions': []}
