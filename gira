@@ -1,6 +1,8 @@
 #! /usr/bin/env python
 # coding=utf-8
 
+'''JIRA CLI'''
+
 import sys
 reload(sys)
 sys.setdefaultencoding('utf-8')
@@ -42,6 +44,8 @@ REGROU = re.compile('^#\s+(?P<grouping>.*)$')
 REBLAN = re.compile('^\s*$')
 
 def values(issues, key, fields, child=''):
+    '''Return row of issue field values'''
+
     values = [child + key]
     for field in fields:
         if isinstance(issues[key][field], list):
@@ -52,6 +56,8 @@ def values(issues, key, fields, child=''):
     return values
 
 def subset(needle, haystack):
+    '''Return whether needle is a subset of haystack'''
+
     if isinstance(needle, list) and isinstance(haystack, list):
         for item0, item1 in itertools.izip_longest(needle, haystack):
             if not subset(item0, item1):
@@ -68,7 +74,11 @@ def subset(needle, haystack):
     return True
 
 class Gira(cli.Cli):
+    '''Gira CLI class'''
+
     def __init__(self, server, project):
+        '''Initialise parser and get cookie'''
+
         cli.Cli.__init__(self, history=True)
 
         self.server = server
@@ -112,6 +122,8 @@ class Gira(cli.Cli):
         self.null = open(os.devnull, 'w')
 
     def getcookie(self):
+        '''Get cookie'''
+
         print "Getting a fresh cookie... ",
         sys.stdout.flush()
         subprocess.call(['get-cookie', '-u',
@@ -119,7 +131,11 @@ class Gira(cli.Cli):
         print "Done."
 
     def curl(self, res, method=None, data=None):
+        '''Prepare, run curl and manage its output'''
+
         def curl():
+            '''Run curl'''
+
             # Assemble arguments
             args = ['curl', '-b', self.cookiepath]
             if method and data:
@@ -149,6 +165,8 @@ class Gira(cli.Cli):
         return jsonout
 
     def run_versions(self, args):
+        '''Run versions command'''
+
         if not self.project:
             print >> sys.stderr, "Project not set"
             return
@@ -169,6 +187,8 @@ class Gira(cli.Cli):
         tempfhl.close()
 
     def issues(self, query, group, maxresults):
+        '''Query issues and organise their fields'''
+
         try:
             # Collect issues and their relationships
             result = self.search(query, maxresults)
@@ -225,6 +245,8 @@ class Gira(cli.Cli):
             issues[issue['key']] = iss
 
         def table(tempfhl, rows, issues, fields):
+            '''Print table'''
+
             # Arrange issues for table
             for key in issues:
                 issue = issues[key]
@@ -287,6 +309,8 @@ class Gira(cli.Cli):
         return issues
 
     def run_issues(self, args):
+        '''Run issues command'''
+
         if not self.project:
             print >> sys.stderr, "Project not set"
             return
@@ -334,10 +358,14 @@ class Gira(cli.Cli):
             return name
 
     def search(self, jql, maxresults=50):
+        '''Run search query'''
+
         return self.curl('/search?jql=%s&maxResults=%d' % \
                          (urllib.quote(jql), maxresults))
 
     def run_components(self, args):
+        '''Run components command'''
+
         if not self.project:
             print >> sys.stderr, "Project not set"
             return
@@ -358,10 +386,14 @@ class Gira(cli.Cli):
         tempfhl.close()
 
     def run_search(self, args):
+        '''Run search command'''
+
         jql = ['"%s"' % word if ' ' in word else word for word in args.jql]
         self.issues(' '.join(jql), args.maxresults)
 
     def run_projects(self, args):
+        '''Run projects command'''
+
         projects = [[prj['name'], prj['key']] for prj in self.curl('/project')]
         projects.insert(0, ["PROJECT", "KEY"])
         tempfhl = open(self.temp, 'w')
@@ -370,6 +402,8 @@ class Gira(cli.Cli):
         tempfhl.close()
 
     def run_use(self, args):
+        '''Run use command'''
+
         for project in self.curl('/project'):
             if args.project in (project['name'], project['key']):
                 self.project = project['key']
@@ -379,6 +413,8 @@ class Gira(cli.Cli):
             print >> sys.stderr, args.project + ": No such project"
 
     def run_issue(self, args):
+        '''Run issue command'''
+
         issues = {}
         for key in args.key:
             issue = self.curl('/issue/%s?expand=transitions' % key)
@@ -445,6 +481,8 @@ class Gira(cli.Cli):
                     break
 
     def parseissue(self, temp):
+        '''Parse issue form'''
+
         # A list of (key, {}) rather than a dictionary keyed on the issue
         # key so we can issues with the same key, as when we create many in
         # one go (e.g. literally 'AA-???').
@@ -562,6 +600,8 @@ class Gira(cli.Cli):
         return issues
 
     def parseissues(self, temp, grouping):
+        '''Parse issue index'''
+
         issues = {}
         groups = []
         for line in temp:
@@ -581,6 +621,8 @@ class Gira(cli.Cli):
         return issues
 
     def form(self, issue, new):
+        '''Print issue form'''
+
         fields = issue['fields']
         transs = [trans['name'] for trans in issue['transitions']]
 
@@ -669,6 +711,8 @@ class Gira(cli.Cli):
         fhl.close()
 
     def run_create(self, args):
+        '''Run create command'''
+
         # Write form
         issue = {'fields': {'assignee': {'name': ''},
                             'comment': {'comments': []},
@@ -709,6 +753,8 @@ class Gira(cli.Cli):
                     print >> sys.stderr, self.wrapper.fill(msg)
 
     def run_debug(self, args):
+        '''Run query and print raw result'''
+
         jsonoutput = self.curl(args.resource)
         tempfhl = open(self.temp, 'w')
         tempfhl.write(pprint.pformat(jsonoutput))
@@ -716,6 +762,8 @@ class Gira(cli.Cli):
         pprint.pprint(jsonoutput)
 
 def main():
+    '''Main function'''
+
     # Arguments
     p = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     p.add_argument('-s', '--server', default='https://example.net/jira')
