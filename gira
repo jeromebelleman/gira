@@ -338,7 +338,6 @@ class Gira(cli.Cli):
         try:
             # Collect issues and their relationships
             result = self.search(query, maxresults)
-            # pprint.pprint(result)
         except KeyError:
             # No matching issue
             for msg in result['errorMessages']:
@@ -358,15 +357,15 @@ class Gira(cli.Cli):
             # Fields
             fields = issue['fields']
 
-            asn = fields['assignee']
-            iss['asn'] = asn['name'] if asn else ''
+            iss['asn'] = fields['assignee']['name'] \
+                if fields['assignee'] else ''
 
             iss['components'] = [com['name'] for com in fields['components']]
 
             iss['versions'] = [ver['name'] for ver in fields['fixVersions']]
 
-            rep = fields['reporter']
-            iss['rep'] = rep['name'] if rep else ''
+            iss['rep'] = fields['reporter']['name'] \
+                if fields['reporter'] else ''
 
             iss['status'] = fields['status']['name']
 
@@ -392,7 +391,25 @@ class Gira(cli.Cli):
                                            'issues': {issue['key']: iss}}
             issues[issue['key']] = iss
 
-        def table(tempfhl, rows, issues, fields):
+        # Report
+        tempfhl = open(self.temp, 'w')
+
+        def mkgroup(heading, fields, grouping, group):
+            '''Print tables for group'''
+
+            for key in group:
+                # Create new table
+                rows = [heading]
+
+                # Write header
+                for grp in group[key][grouping]:
+                    print >> tempfhl, '# ' + grp
+
+                # Write table
+                table(rows, group[key]['issues'], fields)
+                print >> tempfhl
+
+        def table(rows, issues, fields):
             '''Print table'''
 
             # Arrange issues for table
@@ -410,47 +427,28 @@ class Gira(cli.Cli):
                                 rows.append(row(issues, subtask, fields, '├─>'))
                         if subtasks[-1] in issues:
                             rows.append(row(issues, subtasks[-1],
-                                               fields, '└─>'))
+                                            fields, '└─>'))
 
             # Print table
             tab.tab(rows, spacing=2,
                     maxw=[None, None, None, 5, 8, 6, 26], fhl=tempfhl)
 
-        # Report
-        tempfhl = open(self.temp, 'w')
         if group == 'versions':
-            for version in versions:
-                # Create new table
-                rows = [["KEY", "ASSIGNEE", "REPORTER", "COMPONENTS",
-                         "STATUS", "SUMMARY"]]
-
-                # Write header
-                for vers in versions[version]['versions']:
-                    print >> tempfhl, '# ' + vers
-
-                # Write table
-                table(tempfhl, rows, versions[version]['issues'],
-                      ['asn', 'rep', 'components', 'status', 'summary'])
-                print >> tempfhl
+            mkgroup(["KEY", "ASSIGNEE", "REPORTER", "COMPONENTS",
+                     "VERSIONS", "STATUS", "SUMMARY"],
+                    ['asn', 'rep', 'components', 'status', 'summary'],
+                    group, versions)
         elif group == 'components':
-            for component in components:
-                # Create new table
-                rows = [["KEY", "ASSIGNEE", "REPORTER", "VERSIONS",
-                         "STATUS", "SUMMARY"]]
-
-                # Write header
-                for comp in components[component]['components']:
-                    print >> tempfhl, '# ' + comp
-
-                # Write table
-                table(tempfhl, rows, components[component]['issues'],
-                      ['asn', 'rep', 'versions', 'status', 'summary'])
-                print >> tempfhl
+            mkgroup(["KEY", "ASSIGNEE", "REPORTER", "VERSIONS",
+                     "STATUS", "SUMMARY"],
+                    ['asn', 'rep', 'versions', 'status', 'summary'],
+                    group, components)
         else:
             rows = [["KEY", "ASSIGNEE", "REPORTER", "COMPONENTS",
                      "VERSIONS", "STATUS", "SUMMARY"]]
-            table(tempfhl, rows, issues, ['asn', 'rep', 'components',
-                                          'versions', 'status', 'summary'])
+            table(rows, issues, ['asn', 'rep', 'components',
+                                 'versions', 'status', 'summary'])
+
         tempfhl.close()
 
         return issues
