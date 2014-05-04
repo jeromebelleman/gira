@@ -13,7 +13,6 @@ import urllib
 import json
 import ConfigParser
 import re
-import tempfile
 import textwrap
 import itertools
 import cli
@@ -385,7 +384,7 @@ class Gira(cli.Cli):
         jql = ['"%s"' % word if ' ' in word else word for word in args.jql]
         self.issues(' '.join(jql), args.maxresults)
 
-    def run_projects(self, args):
+    def run_projects(self, _):
         '''Run projects command'''
 
         projects = [[prj['name'], prj['key']] for prj in self.curl('/project')]
@@ -646,9 +645,9 @@ class Gira(cli.Cli):
                                  resolution['name'] if resolution else '')
 
         # Components and versions
-        compvers = enumerate(itertools.izip_longest(fields['components'],
-                                                    fields['fixVersions']))
-        for i, (component, version) in compvers:
+        compvers = itertools.izip_longest(fields['components'],
+                                          fields['fixVersions'])
+        for component, version in compvers:
             if component and version:
                 fmt = "Component:  {0:%d} Version:    {1}" % WIDTH
                 values = (component['name'], version['name'])
@@ -686,7 +685,7 @@ class Gira(cli.Cli):
 
         # Comments
         if fields['comment']['comments']:
-            for i, comment in enumerate(fields['comment']['comments']):
+            for comment in fields['comment']['comments']:
                 print >> fhl
                 print >> fhl, "Comment from %s, %s:" % \
                     (comment['author']['name'], comment['updated'][:10])
@@ -704,26 +703,27 @@ class Gira(cli.Cli):
         print >> fhl
         fhl.close()
 
-    def run_create(self, args):
+    def run_create(self, _):
         '''Run create command'''
 
         # Write form
-        issue = {'fields': {'assignee': {'name': ''},
-                            'comment': {'comments': []},
-                            'components': [{'name': 'TODO'}],
-                            'created': 'Now',
-                            'description': 'TODO',
-                            'fixVersions': [{'name': 'TODO'}],
-                            'issuetype': {'name': 'TODO'},
-                            'priority': {'name': 'TODO'},
-                            'project': {'name': self.project},
-                            'reporter': {'name': os.environ['USER']},
-                            'resolution': {'name': ''},
-                            'resolutiondate': '',
-                            'security': {'name': 'Internal Data'},
-                            'status': {'name': 'Open'},
-                            'summary': 'TODO',
-                            'updated': 'Now'},
+        issue = {'fields':
+                    {'assignee': {'name': ''},
+                     'comment': {'comments': []},
+                     'components': [{'name': 'TODO'}], # pylint: disable=fixme
+                     'created': 'Now',
+                     'description': 'TODO', # pylint: disable=fixme
+                     'fixVersions': [{'name': 'TODO'}], # pylint: disable=fixme
+                     'issuetype': {'name': 'TODO'}, # pylint: disable=fixme
+                     'priority': {'name': 'TODO'}, # pylint: disable=fixme
+                     'project': {'name': self.project},
+                     'reporter': {'name': os.environ['USER']},
+                     'resolution': {'name': ''},
+                     'resolutiondate': '',
+                     'security': {'name': 'Internal Data'},
+                     'status': {'name': 'Open'},
+                     'summary': 'TODO', # pylint: disable=fixme
+                     'updated': 'Now'},
                  'key': self.project + '-???',
                  'transitions': []}
         self.form(issue, True)
@@ -739,7 +739,7 @@ class Gira(cli.Cli):
         tempvim.close()
 
         # Write issue data to JIRA
-        for key, fields in issuesedit:
+        for _, fields in issuesedit:
             out = self.curl('/issue', 'POST', {'fields': fields['fields']})
             if out and 'errors' in out:
                 for error in out['errors']:
