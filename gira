@@ -552,10 +552,8 @@ class Gira(cli.Cli):
 
         issues = {}
         for key in args.key:
-            issue = self.curl('/issue/%s?expand=transitions' % key)
-            issues[key] = issue
-
-            self.form(issue, False)
+            issues[key] = self.curl('/issue/%s?expand=transitions' % key)
+            self.form(issues[key], False)
 
         # Open page file in Vim
         subprocess.call(['vim', '-S', self.directory + '/issue.vimrc',
@@ -619,7 +617,6 @@ class Gira(cli.Cli):
         '''Print issue form'''
 
         fields = issue['fields']
-        transs = [trans['name'] for trans in issue['transitions']]
 
         fhl = open(self.temp, 'w')
 
@@ -637,7 +634,9 @@ class Gira(cli.Cli):
             fmt = "Type:       {0:%d} Status:     {1} # {2}" % WIDTH
             print >> fhl, fmt.format(fields['issuetype']['name'],
                                      fields['status']['name'],
-                                     ', '.join(transs))
+                                     ', '.join([trans['name']
+                                                for trans
+                                                in issue['transitions']]))
 
         # Priority and resolution
         priority = fields['priority']
@@ -647,9 +646,8 @@ class Gira(cli.Cli):
                                  resolution['name'] if resolution else '')
 
         # Components and versions
-        compvers = itertools.izip_longest(fields['components'],
-                                          fields['fixVersions'])
-        for component, version in compvers:
+        for component, version in itertools.izip_longest(fields['components'],
+                                                         fields['fixVersions']):
             if component and version:
                 fmt = "Component:  {0:%d} Version:    {1}" % WIDTH
                 values = (component['name'], version['name'])
