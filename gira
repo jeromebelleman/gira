@@ -351,12 +351,6 @@ class Gira(cli.Cli):
                             msg = '%s: %s' % (error, out['errors'][error])
                             print >> sys.stderr, self.wrapper.fill(msg)
 
-    def nickname(self, name):
-        try:
-            return self.cfg.get('nicknames', name)
-        except ConfigParser.NoOptionError:
-            return name
-
     def search(self, jql, maxresults=50):
         '''Run search query'''
 
