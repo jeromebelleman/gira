@@ -26,9 +26,9 @@ COMP, DESC, OLDCOMM, COMM = range(4)
 NONE, VERSION, COMPONENT = range(3) # Grouping
 
 # Fields
-REHEAD = re.compile('^>>> (?P<proj>[^/]+)/(?P<key>[A-Z]+-\S+) (?P<summary>.*)$')
+REHEAD = re.compile('^>>> [^/]+/(?P<key>(?P<proj>[A-Z]+)-\S+) (?P<summary>.*)$')
 REFOOT = re.compile('^<<< [^/]+/[A-Z]+-\S+ .*$')
-RETYPE = re.compile('^Type: +(?P<type>.+) +Status: +(?P<stat>.*)(?: # .*)?$')
+RETYPE = re.compile('^Type: +(?P<type>.+) +Status: +(?P<stat>.*?)(?: # .*)?$')
 REPRIO = re.compile('^Priority: +(?P<prio>.+) +Resolution: +(?P<res>.*)$')
 RECOMP = re.compile('^(Component: +(?P<comp>.+?))?( +Version: +(?P<ver>.+))?$')
 RECREA = re.compile('^Created: +(?P<crea>.+) +Security: +(?P<sec>.*)$')
@@ -38,7 +38,7 @@ RECOMM = re.compile('^Comment from \w+, \S+:$')
 
 # Index
 REISSU = re.compile('^(?:(?:└|├)─>)?(?P<key>[A-Z]+-\d+) +.*$')
-REHEAD = re.compile('^#\s+(?P<grouping>.*)$')
+REGROU = re.compile('^#\s+(?P<grouping>.*)$')
 REBLAN = re.compile('^\s*$')
 
 def values(issues, key, fields, child=''):
@@ -105,7 +105,6 @@ class Gira(cli.Cli):
         self.useparser.add_argument('project')
 
         self.issueparser.add_argument('key', nargs='+')
-        self.issueparser.add_argument('-e', '--edit', action='store_true')
 
         self.debugparser.add_argument('resource')
 
@@ -380,81 +379,71 @@ class Gira(cli.Cli):
             print >> sys.stderr, args.project + ": No such project"
 
     def run_issue(self, args):
-        if args.edit:
-            temp = tempfile.NamedTemporaryFile(prefix='issue-',
-                                               dir=self.directory)
-            fhl = temp
-        else:
-            fhl = sys.stdout
-
         issues = {}
         for key in args.key:
             issue = self.curl('/issue/%s?expand=transitions' % key)
-            pprint.pprint(issue)
             issues[key] = issue
 
-            self.form(fhl, issue, args.edit)
+            self.form(issue, False)
 
-        if args.edit:
-            # Open page file in Vim
-            temp.flush()
-            subprocess.call(['vim', '-S', self.directory + '/issue.vimrc',
-                             temp.name])
-            self.wintitle()
+        # Open page file in Vim
+        subprocess.call(['vim', '-S', self.directory + '/issue.vimrc',
+                         self.temp])
+        self.wintitle()
 
-            # Parse data from issue file
-            tempvim = open(temp.name)
-            issuesedit = self.parseissue(tempvim)
-            tempvim.close()
+        # Parse data from issue file
+        tempvim = open(self.temp)
+        issuesedit = self.parseissue(tempvim)
+        tempvim.close()
 
-            for key, fields in issuesedit:
-                # Update fields
-                if not subset(fields['fields'], issues[key]['fields']):
-                    out = self.curl('/issue/' + key, 'PUT',
-                                    {'fields': fields['fields']})
+
+        for key, fields in issuesedit:
+            # Update fields
+            if not subset(fields['fields'], issues[key]['fields']):
+                out = self.curl('/issue/' + key, 'PUT',
+                                {'fields': fields['fields']})
+                if out and 'errors' in out:
+                    for error in out['errors']:
+                        msg = '%s: %s' % (error, out['errors'][error])
+                        print >> sys.stderr, self.wrapper.fill(msg)
+
+            # Add comment
+            comment = fields['comment']
+            if comment:
+                out = self.curl('/issue/%s/comment' % key, 'POST',
+                                {'body': comment})
+                if out and 'errors' in out:
+                    for error in out['errors']:
+                        msg = '%s: %s' % (error, out['errors'][error])
+                        print >> sys.stderr, self.wrapper.fill(msg)
+
+            # Edit comments
+            comments = issues[key]['fields']['comment']['comments']
+            for i, comment in enumerate(fields['comments']):
+                if not subset(comment, comments[i]):
+                    cid = comments[i]['id']
+                    out = self.curl('/issue/%s/comment/%s' % (key, cid),
+                                    'PUT', comment)
+                    # FIXME Refactor error printing (maybe in curl() itself)
                     if out and 'errors' in out:
                         for error in out['errors']:
                             msg = '%s: %s' % (error, out['errors'][error])
                             print >> sys.stderr, self.wrapper.fill(msg)
 
-                # Add comment
-                comment = fields['comment']
-                if comment:
-                    out = self.curl('/issue/%s/comment' % key, 'POST',
-                                    {'body': comment})
+            # Perform transition
+            for transition in issues[key]['transitions']:
+                # No real need to check if any change is needed since
+                # states and transitions have different names even if
+                # they relate to each other and this will cause this
+                # test to fail:
+                if fields['transition'] == transition['name']:
+                    out = self.curl('/issue/%s/transitions' % key, 'POST',
+                                    {'transition': transition['id']})
                     if out and 'errors' in out:
                         for error in out['errors']:
                             msg = '%s: %s' % (error, out['errors'][error])
                             print >> sys.stderr, self.wrapper.fill(msg)
-
-                # Edit comments
-                comments = issues[key]['fields']['comment']['comments']
-                for i, comment in enumerate(fields['comments']):
-                    if not subset(comment, comments[i]):
-                        cid = comments[i]['id']
-                        out = self.curl('/issue/%s/comment/%s' % (key, cid),
-                                        'PUT', {'body': comment})
-                        # FIXME Refactor error printing (maybe in curl() itself)
-                        if out and 'errors' in out:
-                            for error in out['errors']:
-                                msg = '%s: %s' % (error, out['errors'][error])
-                                print >> sys.stderr, self.wrapper.fill(msg)
-
-                # Perform transition
-                for transition in issues[key]['transitions']:
-                    # No real need to check if any change is needed since
-                    # states and transitions have different names even if
-                    # they relate to each other and this will cause this
-                    # test to fail:
-                    if fields['transition'] == transition['name']:
-                        out = self.curl('/issue/%s/transitions' % key, 'POST',
-                                        {'transition': transition['id']})
-                        if out and 'errors' in out:
-                            for error in out['errors']:
-                                msg = '%s: %s' % (error, out['errors'][error])
-                                print >> sys.stderr, self.wrapper.fill(msg)
-                        break
-        temp.close()
+                    break
 
     def parseissue(self, temp):
         # A list of (key, {}) rather than a dictionary keyed on the issue
@@ -583,7 +572,7 @@ class Gira(cli.Cli):
                 issues[match.group('key')] = {grouping: groups}
 
             # Is it a header?
-            match = REHEAD.match(line)
+            match = REGROU.match(line)
             if match:
                 groups.append(match.group('grouping'))
 
@@ -592,9 +581,11 @@ class Gira(cli.Cli):
 
         return issues
 
-    def form(self, fhl, issue, edit):
+    def form(self, issue, new):
         fields = issue['fields']
         transs = [trans['name'] for trans in issue['transitions']]
+
+        fhl = open(self.temp, 'w')
 
         # Header
         print >> fhl, ">>> %s/%s %s" % (fields['project']['name'],
@@ -602,15 +593,15 @@ class Gira(cli.Cli):
                                         fields['summary'])
 
         # Type and status
-        if edit:
+        if new:
+            fmt = "Type:       {0:%d} Status:     {1}" % WIDTH
+            print >> fhl, fmt.format(fields['issuetype']['name'],
+                                     fields['status']['name'])
+        else:
             fmt = "Type:       {0:%d} Status:     {1} # {2}" % WIDTH
             print >> fhl, fmt.format(fields['issuetype']['name'],
                                      fields['status']['name'],
                                      ', '.join(transs))
-        else:
-            fmt = "Type:       {0:%d} Status:     {1}" % WIDTH
-            print >> fhl, fmt.format(fields['issuetype']['name'],
-                                     fields['status']['name'])
 
         # Priority and resolution
         priority = fields['priority']
@@ -666,7 +657,7 @@ class Gira(cli.Cli):
                     (comment['author']['name'], comment['updated'][:10])
                 print >> fhl, comment['body'].replace('\r', '')
 
-        if edit:
+        if not new:
             print >> fhl
             print >> fhl, "New Comment?"
             print >> fhl
@@ -676,6 +667,7 @@ class Gira(cli.Cli):
                                         issue['key'],
                                         fields['summary'])
         print >> fhl
+        fhl.close()
 
     def run_create(self, args):
         # Write form
@@ -698,16 +690,15 @@ class Gira(cli.Cli):
                             'updated': 'Now'},
                  'key': self.project + '-???',
                  'transitions': []}
-        self.form(temp, issue, False)
+        self.form(issue, True)
 
         # Open page file in Vim
-        temp.flush()
         subprocess.call(['vim', '-S', self.directory + '/issue.vimrc',
-                         temp.name])
+                         self.temp])
         self.wintitle()
 
         # Parse date from page file
-        tempvim = open(temp.name)
+        tempvim = open(self.temp)
         issuesedit = self.parseissue(tempvim)
         tempvim.close()
 
