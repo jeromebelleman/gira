@@ -28,20 +28,20 @@ COMP, DESC, OLDCOMM, COMM = range(4)
 NONE, VERSION, COMPONENT = range(3) # Grouping
 
 # Fields
-REHEAD = re.compile('^>>> [^/]+/(?P<key>(?P<proj>[A-Z]+)-\S+) (?P<summary>.*)$')
-REFOOT = re.compile('^<<< [^/]+/[A-Z]+-\S+ .*$')
-RETYPE = re.compile('^Type: +(?P<type>.+) +Status: +(?P<stat>.*?)(?: # .*)?$')
-REPRIO = re.compile('^Priority: +(?P<prio>.+) +Resolution: +(?P<res>.*)$')
-RECOMP = re.compile('^(Component: +(?P<comp>.+?))?( +Version: +(?P<ver>.+))?$')
-RECREA = re.compile('^Created: +(?P<crea>.+) +Security: +(?P<sec>.*)$')
-REUPDA = re.compile('^Updated: +(?P<upda>.+) +Assignee: +(?P<asn>.*)$')
-RERESO = re.compile('^Resolved: +(?P<reso>.+) +Reporter: +(?P<rep>.*)$')
-RECOMM = re.compile('^Comment from \w+, \S+:$')
+REHEAD = re.compile(r'^>>> [^/]+/(?P<key>(?P<proj>[A-Z]+)-\S+) (?P<summ>.*)$')
+REFOOT = re.compile(r'^<<< [^/]+/[A-Z]+-\S+ .*$')
+RETYPE = re.compile(r'^Type: +(?P<type>.+) +Status: +(?P<stat>.*?)(?: # .*)?$')
+REPRIO = re.compile(r'^Priority: +(?P<prio>.+) +Resolution: +(?P<res>.*)$')
+RECOMP = re.compile(r'^(Component: +(?P<comp>.+?))?( +Version: +(?P<ver>.+))?$')
+RECREA = re.compile(r'^Created: +(?P<crea>.+) +Security: +(?P<sec>.*)$')
+REUPDA = re.compile(r'^Updated: +(?P<upda>.+) +Assignee: +(?P<asn>.*)$')
+RERESO = re.compile(r'^Resolved: +(?P<reso>.+) +Reporter: +(?P<rep>.*)$')
+RECOMM = re.compile(r'^Comment from \w+, \S+:$')
 
 # Index
-REISSU = re.compile('^(?:(?:└|├)─>)?(?P<key>[A-Z]+-\d+) +.*$')
-REGROU = re.compile('^#\s+(?P<grouping>.*)$')
-REBLAN = re.compile('^\s*$')
+REISSU = re.compile(r'^(?:(?:└|├)─>)?(?P<key>[A-Z]+-\d+) +.*$')
+REGROU = re.compile(r'^#\s+(?P<grouping>.*)$')
+REBLAN = re.compile(r'^\s*$')
 
 def values(issues, key, fields, child=''):
     '''Return row of issue field values'''
@@ -492,7 +492,7 @@ class Gira(cli.Cli):
 
                 key = match.group('key')
                 fields['project'] = {'key': match.group('proj')}
-                summary = match.group('summary')
+                summary = match.group('summ')
 
                 issues.append((key, issue))
                 fields['summary'] = summary
