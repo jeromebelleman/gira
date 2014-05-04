@@ -302,6 +302,12 @@ class Gira(cli.Cli):
             self.getcookie()
             jsonout = curl()
 
+        # Report errors
+        if jsonout and 'errors' in jsonout:
+            for error in jsonout['errors']:
+                msg = '%s: %s' % (error, jsonout['errors'][error])
+                print >> sys.stderr, self.wrapper.fill(msg)
+
         return jsonout
 
     def run_versions(self, args):
@@ -486,11 +492,7 @@ class Gira(cli.Cli):
                     fields = {'fields': {args.group
                                          if args.group != 'versions'
                                          else 'fixVersions': groups}}
-                    out = self.curl('/issue/' + key, 'PUT', fields)
-                    if out and 'errors' in out:
-                        for error in out['errors']:
-                            msg = '%s: %s' % (error, out['errors'][error])
-                            print >> sys.stderr, self.wrapper.fill(msg)
+                    self.curl('/issue/' + key, 'PUT', fields)
 
     def search(self, jql, maxresults=50):
         '''Run search query'''
@@ -568,35 +570,20 @@ class Gira(cli.Cli):
         for key, fields in issuesedit:
             # Update fields
             if not subset(fields['fields'], issues[key]['fields']):
-                out = self.curl('/issue/' + key, 'PUT',
-                                {'fields': fields['fields']})
-                if out and 'errors' in out:
-                    for error in out['errors']:
-                        msg = '%s: %s' % (error, out['errors'][error])
-                        print >> sys.stderr, self.wrapper.fill(msg)
+                self.curl('/issue/' + key, 'PUT', {'fields': fields['fields']})
 
             # Add comment
             comment = fields['comment']
             if comment:
-                out = self.curl('/issue/%s/comment' % key, 'POST',
-                                {'body': comment})
-                if out and 'errors' in out:
-                    for error in out['errors']:
-                        msg = '%s: %s' % (error, out['errors'][error])
-                        print >> sys.stderr, self.wrapper.fill(msg)
+                self.curl('/issue/%s/comment' % key, 'POST', {'body': comment})
 
             # Edit comments
             comments = issues[key]['fields']['comment']['comments']
             for i, comment in enumerate(fields['comments']):
                 if not subset(comment, comments[i]):
                     cid = comments[i]['id']
-                    out = self.curl('/issue/%s/comment/%s' % (key, cid),
-                                    'PUT', comment)
-                    # FIXME Refactor error printing (maybe in curl() itself)
-                    if out and 'errors' in out:
-                        for error in out['errors']:
-                            msg = '%s: %s' % (error, out['errors'][error])
-                            print >> sys.stderr, self.wrapper.fill(msg)
+                    self.curl('/issue/%s/comment/%s' % (key, cid),
+                              'PUT', comment)
 
             # Perform transition
             for transition in issues[key]['transitions']:
@@ -605,12 +592,8 @@ class Gira(cli.Cli):
                 # they relate to each other and this will cause this
                 # test to fail:
                 if fields['transition'] == transition['name']:
-                    out = self.curl('/issue/%s/transitions' % key, 'POST',
-                                    {'transition': transition['id']})
-                    if out and 'errors' in out:
-                        for error in out['errors']:
-                            msg = '%s: %s' % (error, out['errors'][error])
-                            print >> sys.stderr, self.wrapper.fill(msg)
+                    self.curl('/issue/%s/transitions' % key, 'POST',
+                              {'transition': transition['id']})
                     break
 
     def form(self, issue, new):
@@ -740,11 +723,7 @@ class Gira(cli.Cli):
 
         # Write issue data to JIRA
         for _, fields in issuesedit:
-            out = self.curl('/issue', 'POST', {'fields': fields['fields']})
-            if out and 'errors' in out:
-                for error in out['errors']:
-                    msg = '%s: %s' % (error, out['errors'][error])
-                    print >> sys.stderr, self.wrapper.fill(msg)
+            self.curl('/issue', 'POST', {'fields': fields['fields']})
 
     def run_debug(self, args):
         '''Run query and print raw result'''
