@@ -42,7 +42,7 @@ REISSU = re.compile(r'^(?:(?:└|├)─>)?(?P<key>[A-Z]+-\d+) +.*$')
 REGROU = re.compile(r'^#\s+(?P<grouping>.*)$')
 REBLAN = re.compile(r'^\s*$')
 
-def values(issues, key, fields, child=''):
+def row(issues, key, fields, child=''):
     '''Return row of issue field values'''
 
     values = [child + key]
@@ -198,8 +198,10 @@ class Gira(cli.Cli):
                 print >> sys.stderr, self.wrapper.fill(msg)
             return
 
-        if group == 'versions': versions = {}
-        elif group == 'components': components = {}
+        if group == 'versions':
+            versions = {}
+        elif group == 'components':
+            components = {}
         issues = {} # Need this structure anyway to subset later on
 
         for issue in result['issues']:
@@ -252,16 +254,15 @@ class Gira(cli.Cli):
                 subtasks = issue['subtasks']
                 if not issue['parent'] or issue['parent']['key'] not in issues:
                     # Add row
-                    rows.append(values(issues, key, fields))
+                    rows.append(row(issues, key, fields))
 
                     if subtasks:
                         # Add subtasks
                         for subtask in subtasks[:-1]:
                             if subtask in issues:
-                                rows.append(values(issues, subtask,
-                                                   fields, '├─>'))
+                                rows.append(row(issues, subtask, fields, '├─>'))
                         if subtasks[-1] in issues:
-                            rows.append(values(issues, subtasks[-1],
+                            rows.append(row(issues, subtasks[-1],
                                                fields, '└─>'))
 
             # Print table
@@ -382,7 +383,7 @@ class Gira(cli.Cli):
         '''Run search command'''
 
         jql = ['"%s"' % word if ' ' in word else word for word in args.jql]
-        self.issues(' '.join(jql), args.maxresults)
+        self.issues(' '.join(jql), None, args.maxresults)
 
     def run_projects(self, _):
         '''Run projects command'''
@@ -609,7 +610,8 @@ class Gira(cli.Cli):
                 groups.append(match.group('grouping'))
 
             # Is it a blank line?
-            if REBLAN.match(line): groups = []
+            if REBLAN.match(line):
+                groups = []
 
         return issues
 
@@ -759,10 +761,10 @@ def main():
     '''Main function'''
 
     # Arguments
-    p = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
-    p.add_argument('-s', '--server', default='https://example.net/jira')
-    p.add_argument('project', nargs='?')
-    args = p.parse_args()
+    parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
+    parser.add_argument('-s', '--server', default='https://example.net/jira')
+    parser.add_argument('project', nargs='?')
+    args = parser.parse_args()
 
     # CLI
     Gira(args.server, args.project).loop()
