@@ -72,6 +72,147 @@ def subset(needle, haystack):
 
     return True
 
+def parseissue(temp):
+    '''Parse issue form'''
+
+    # A list of (key, {}) rather than a dictionary keyed on the issue
+    # key so we can issues with the same key, as when we create many in
+    # one go (e.g. literally 'AA-???').
+    issues = [] 
+
+    for line in temp:
+        # Parse line
+        match = REHEAD.match(line[:-1])
+        if match:
+            issue = {'fields': {}, 'comment': '', 'comments': [],
+                     'transition': {}}
+            fields = issue['fields']
+
+            key = match.group('key')
+            fields['project'] = {'key': match.group('proj')}
+            summary = match.group('summ')
+
+            issues.append((key, issue))
+            fields['summary'] = summary
+            state = None
+            continue
+
+        match = RETYPE.match(line[:-1])
+        if match:
+            fields['issuetype'] = {'name': match.group('type').strip()}
+            issue['transition'] = match.group('stat')
+            continue
+
+        match = REPRIO.match(line[:-1])
+        if match:
+            fields['priority'] = {'name': match.group('prio').strip()}
+            continue
+
+        match = RECOMP.match(line[:-1])
+        if match and line[:-1]: # But don't eat empty lines
+            component = match.group('comp')
+            if component:
+                if 'components' in fields:
+                    components = fields['components']
+                    components.append({'name': component.strip()})
+                else:
+                    fields['components'] = [{'name': component.strip()}]
+
+            version = match.group('ver')
+            if version:
+                if 'fixVersions' in fields:
+                    versions = fields['fixVersions']
+                    versions.append({'name': version.strip()})
+                else:
+                    fields['fixVersions'] = \
+                        [{'name': version.strip()}]
+            continue
+
+        match = RECREA.match(line[:-1])
+        if match:
+            # Let's not touch dates for now
+            fields['security'] = {'name': match.group('sec').strip()}
+            continue
+
+        match = REUPDA.match(line[:-1])
+        if match:
+            # Let's not touch dates for now
+            asn = match.group('asn').strip()
+            fields['assignee'] = {'name': asn} if asn else None
+            continue
+
+        match = RERESO.match(line[:-1])
+        if match:
+            # Let's not touch dates for now
+            rep = match.group('rep').strip()
+            fields['reporter'] = {'name': rep} if rep else None
+            continue
+
+        if line[:-1] == 'Description:':
+            fields['description'] = ''
+            state = DESC
+            continue
+
+        if RECOMM.match(line[:-1]):
+            state = OLDCOMM
+
+            # Strip last old comment since we know we won't have another one
+            if issue['comments']:
+                issue['comments'][-1]['body'] = \
+                    issue['comments'][-1]['body'][:-2]
+
+            issue['comments'].append({'body': ''})
+            continue
+
+        if line[:-1] == 'New Comment?':
+            if 'description' in fields:
+                fields['description'] = fields['description'][:-2]
+
+            # Strip last old comment since we know we won't have another one
+            if issue['comments']:
+                issue['comments'][-1]['body'] = \
+                    issue['comments'][-1]['body'][:-2]
+
+            state = COMM
+            continue
+
+        if REFOOT.match(line[:-1]):
+            issue['comment'] = issue['comment'].strip()
+            state = None
+            continue
+
+        # Handle state
+        if state == DESC:
+            fields['description'] += line
+        elif state == COMM:
+            issue['comment'] += line
+        elif state == OLDCOMM:
+            issue['comments'][-1]['body'] += line
+
+    return issues
+
+def parseissues(temp, grouping):
+    '''Parse issue index'''
+
+    issues = {}
+    groups = []
+    for line in temp:
+        # Is it an issue?
+        match = REISSU.match(line)
+        if match:
+            issues[match.group('key')] = {grouping: groups}
+
+        # Is it a header?
+        match = REGROU.match(line)
+        if match:
+            groups.append(match.group('grouping'))
+
+        # Is it a blank line?
+        if REBLAN.match(line):
+            groups = []
+
+    return issues
+
 class Gira(cli.Cli):
     '''Gira CLI class'''
 
@@ -334,7 +475,7 @@ class Gira(cli.Cli):
         if args.group:
             # Parse data from issues file
             tempvim = open(self.temp)
-            issuesedit = self.parseissues(tempvim, args.group)
+            issuesedit = parseissues(tempvim, args.group)
             tempvim.close()
 
             # Update issues
@@ -423,7 +564,7 @@ class Gira(cli.Cli):
 
         # Parse data from issue file
         tempvim = open(self.temp)
-        issuesedit = self.parseissue(tempvim)
+        issuesedit = parseissue(tempvim)
         tempvim.close()
 
         for key, fields in issuesedit:
@@ -473,147 +614,6 @@ class Gira(cli.Cli):
                             msg = '%s: %s' % (error, out['errors'][error])
                             print >> sys.stderr, self.wrapper.fill(msg)
                     break
-
-    def parseissue(self, temp):
-        '''Parse issue form'''
-
-        # A list of (key, {}) rather than a dictionary keyed on the issue
-        # key so we can issues with the same key, as when we create many in
-        # one go (e.g. literally 'AA-???').
-        issues = [] 
-
-        for line in temp:
-            # Parse line
-            match = REHEAD.match(line[:-1])
-            if match:
-                issue = {'fields': {}, 'comment': '', 'comments': [],
-                         'transition': {}}
-                fields = issue['fields']
-
-                key = match.group('key')
-                fields['project'] = {'key': match.group('proj')}
-                summary = match.group('summ')
-
-                issues.append((key, issue))
-                fields['summary'] = summary
-                state = None
-                continue
-
-            match = RETYPE.match(line[:-1])
-            if match:
-                fields['issuetype'] = {'name': match.group('type').strip()}
-                issue['transition'] = match.group('stat')
-                continue
-
-            match = REPRIO.match(line[:-1])
-            if match:
-                fields['priority'] = {'name': match.group('prio').strip()}
-                continue
-
-            match = RECOMP.match(line[:-1])
-            if match and line[:-1]: # But don't eat empty lines
-                component = match.group('comp')
-                if component:
-                    if 'components' in fields:
-                        components = fields['components']
-                        components.append({'name': component.strip()})
-                    else:
-                        fields['components'] = [{'name': component.strip()}]
-
-                version = match.group('ver')
-                if version:
-                    if 'fixVersions' in fields:
-                        versions = fields['fixVersions']
-                        versions.append({'name': version.strip()})
-                    else:
-                        fields['fixVersions'] = \
-                            [{'name': version.strip()}]
-                continue
-
-            match = RECREA.match(line[:-1])
-            if match:
-                # Let's not touch dates for now
-                fields['security'] = {'name': match.group('sec').strip()}
-                continue
-
-            match = REUPDA.match(line[:-1])
-            if match:
-                # Let's not touch dates for now
-                asn = match.group('asn').strip()
-                fields['assignee'] = {'name': asn} if asn else None
-                continue
-
-            match = RERESO.match(line[:-1])
-            if match:
-                # Let's not touch dates for now
-                rep = match.group('rep').strip()
-                fields['reporter'] = {'name': rep} if rep else None
-                continue
-
-            if line[:-1] == 'Description:':
-                fields['description'] = ''
-                state = DESC
-                continue
-
-            if RECOMM.match(line[:-1]):
-                state = OLDCOMM
-
-                # Strip last old comment since we know we won't have another one
-                if issue['comments']:
-                    issue['comments'][-1]['body'] = \
-                        issue['comments'][-1]['body'][:-2]
-
-                issue['comments'].append({'body': ''})
-                continue
-
-            if line[:-1] == 'New Comment?':
-                if 'description' in fields:
-                    fields['description'] = fields['description'][:-2]
-
-                # Strip last old comment since we know we won't have another one
-                if issue['comments']:
-                    issue['comments'][-1]['body'] = \
-                        issue['comments'][-1]['body'][:-2]
-
-                state = COMM
-                continue
-
-            if REFOOT.match(line[:-1]):
-                issue['comment'] = issue['comment'].strip()
-                state = None
-                continue
-
-            # Handle state
-            if state == DESC:
-                fields['description'] += line
-            elif state == COMM:
-                issue['comment'] += line
-            elif state == OLDCOMM:
-                issue['comments'][-1]['body'] += line
-
-        return issues
-
-    def parseissues(self, temp, grouping):
-        '''Parse issue index'''
-
-        issues = {}
-        groups = []
-        for line in temp:
-            # Is it an issue?
-            match = REISSU.match(line)
-            if match:
-                issues[match.group('key')] = {grouping: groups}
-
-            # Is it a header?
-            match = REGROU.match(line)
-            if match:
-                groups.append(match.group('grouping'))
-
-            # Is it a blank line?
-            if REBLAN.match(line):
-                groups = []
-
-        return issues
 
     def form(self, issue, new):
         '''Print issue form'''
@@ -737,7 +737,7 @@ class Gira(cli.Cli):
 
         # Parse date from page file
         tempvim = open(self.temp)
-        issuesedit = self.parseissue(tempvim)
+        issuesedit = parseissue(tempvim)
         tempvim.close()
 
         # Write issue data to JIRA
