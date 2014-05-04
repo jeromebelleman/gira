@@ -48,7 +48,7 @@ def row(issues, key, fields, child=''):
     values = [child + key]
     for field in fields:
         if isinstance(issues[key][field], list):
-            values.append(' ,'.join(issues[key][field]))
+            values.append(', '.join(issues[key][field]))
         else:
             values.append(issues[key][field])
 
@@ -430,8 +430,7 @@ class Gira(cli.Cli):
                                             fields, '└─>'))
 
             # Print table
-            tab.tab(rows, spacing=2,
-                    maxw=[None, None, None, 5, 8, 6, 26], fhl=tempfhl)
+            tab.tab(rows, spacing=2, fhl=tempfhl)
 
         if group == 'versions':
             mkgroup(["KEY", "ASSIGNEE", "REPORTER", "COMPONENTS",
