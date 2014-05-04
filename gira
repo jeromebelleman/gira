@@ -53,7 +53,7 @@ def values(issues, key, fields, child=''):
 
 def subset(needle, haystack):
     if isinstance(needle, list) and isinstance(haystack, list):
-        for item0, item1 in zip(needle, haystack):
+        for item0, item1 in itertools.izip_longest(needle, haystack):
             if not subset(item0, item1):
                 return False
     elif isinstance(needle, dict) and isinstance(haystack, dict):
@@ -395,7 +395,6 @@ class Gira(cli.Cli):
         tempvim = open(self.temp)
         issuesedit = self.parseissue(tempvim)
         tempvim.close()
-
 
         for key, fields in issuesedit:
             # Update fields
