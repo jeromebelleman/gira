@@ -549,10 +549,12 @@ class Gira(cli.Cli):
     def run_issue(self, args):
         '''Run issue command'''
 
+        fhl = open(self.temp, 'w')
         issues = {}
         for key in args.key:
             issues[key] = self.curl('/issue/%s?expand=transitions' % key)
-            self.form(issues[key], False)
+            self.form(fhl, issues[key], False)
+        fhl.close()
 
         # Open page file in Vim
         subprocess.call(['vim', '-S', self.directory + '/issue.vimrc',
@@ -593,12 +595,10 @@ class Gira(cli.Cli):
                               {'transition': transition['id']})
                     break
 
-    def form(self, issue, new):
+    def form(self, fhl, issue, new):
         '''Print issue form'''
 
         fields = issue['fields']
-
-        fhl = open(self.temp, 'w')
 
         # Header
         print >> fhl, ">>> %s/%s %s" % (fields['project']['name'],
@@ -681,12 +681,12 @@ class Gira(cli.Cli):
                                         issue['key'],
                                         fields['summary'])
         print >> fhl
-        fhl.close()
 
     def run_create(self, _):
         '''Run create command'''
 
         # Write form
+        fhl = open(self.temp, 'w')
         issue = {'fields':
                     {'assignee': {'name': ''},
                      'comment': {'comments': []},
@@ -706,7 +706,8 @@ class Gira(cli.Cli):
                      'updated': 'Now'},
                  'key': self.project + '-???',
                  'transitions': []}
-        self.form(issue, True)
+        self.form(fhl, issue, True)
+        fhl.close()
 
         # Open page file in Vim
         subprocess.call(['vim', '-S', self.directory + '/issue.vimrc',
