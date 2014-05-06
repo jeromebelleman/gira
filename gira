@@ -38,7 +38,7 @@ RERESO = re.compile(r'^Resolved: +(?P<reso>.+) +Reporter: +(?P<rep>.*)$')
 RECOMM = re.compile(r'^Comment from \w+, \S+:$')
 
 # Index
-REISSU = re.compile(r'^(?:(?:└|├)─>)?(?P<key>[A-Z]+-\d+) +.*$')
+REISSU = re.compile(r'^(?P<open>o)?(?:(?:└|├)─>)?(?P<key>[A-Z]+-\d+) +.*$')
 REGROU = re.compile(r'^#\s+(?P<grouping>.*)$')
 REBLAN = re.compile(r'^\s*$')
 
@@ -196,11 +196,14 @@ def parseissues(temp, grouping):
 
     issues = {}
     groups = []
+    toopen = []
     for line in temp:
         # Is it an issue?
         match = REISSU.match(line)
         if match:
             issues[match.group('key')] = {grouping: groups}
+            if match.group('open'):
+                toopen.append(match.group('key'))
 
         # Is it a header?
         match = REGROU.match(line)
@@ -211,7 +214,7 @@ def parseissues(temp, grouping):
         if REBLAN.match(line):
             groups = []
 
-    return issues
+    return toopen, issues
 
 class Gira(cli.Cli):
     '''Gira CLI class'''
@@ -474,14 +477,13 @@ class Gira(cli.Cli):
                          self.temp])
         self.wintitle()
 
-        # Only update groups (for now)
-        if args.group:
-            # Parse data from issues file
-            tempvim = open(self.temp)
-            issuesedit = parseissues(tempvim, args.group)
-            tempvim.close()
+        # Parse data from issues file
+        tempvim = open(self.temp)
+        toopen, issuesedit = parseissues(tempvim, args.group)
+        tempvim.close()
 
-            # Update issues
+        # Only update grouped issues (for now)
+        if args.group:
             for key in issuesedit:
                 if not subset(issuesedit[key], issues[key]):
                     groups = [{'name': group} for group in
@@ -490,6 +492,9 @@ class Gira(cli.Cli):
                                          if args.group != 'versions'
                                          else 'fixVersions': groups}}
                     self.curl('/issue/' + key, 'PUT', fields)
+
+        if toopen:
+            self.run_issue(self.issueparser.parse_args(toopen))
 
     def search(self, jql, maxresults=50):
         '''Run search query'''
