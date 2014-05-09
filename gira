@@ -726,7 +726,9 @@ class Gira(cli.Cli):
 
         # Write issue data to JIRA
         for _, fields in issuesedit:
-            self.curl('/issue', 'POST', {'fields': fields['fields']})
+            issue = self.curl('/issue', 'POST', {'fields': fields['fields']})
+            if 'key' in issue:
+                print "Created %s" % issue['key']
 
     def run_debug(self, args):
         '''Run query and print raw result'''
