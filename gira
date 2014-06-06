@@ -15,7 +15,7 @@ import ConfigParser
 import re
 import textwrap
 import itertools
-import cli
+import cli, readline
 import tab
 import pprint
 
@@ -502,7 +502,10 @@ class Gira(cli.Cli):
                     self.curl('/issue/' + key, 'PUT', fields)
 
         if toopen:
-            self.run_issue(self.issueparser.parse_args(toopen))
+            def hook():
+                readline.insert_text('issue ' + ' '.join(toopen))
+                readline.redisplay()
+            readline.set_pre_input_hook(hook)
 
     def search(self, jql, maxresults=50):
         '''Run search query'''
