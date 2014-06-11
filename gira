@@ -132,7 +132,9 @@ def parseissue(temp):
         match = RECREA.match(line[:-1])
         if match:
             # Let's not touch dates for now
-            fields['security'] = {'name': match.group('sec').strip()}
+            sec = match.group('sec').strip()
+            if sec:
+                fields['security'] = {'name': sec}
             continue
 
         match = REUPDA.match(line[:-1])
@@ -680,9 +682,13 @@ class Gira(cli.Cli):
             print >> fhl, fmt.format(*values)
 
         # Creation date and security
-        fmt =  "Created:    {0:%d} Security:   {1}" % WIDTH
-        print >> fhl, fmt.format(fields['created'][:10],
-                                 fields['security']['name'])
+        if 'security' in fields:
+            fmt =  "Created:    {0:%d} Security:   {1}" % WIDTH
+            print >> fhl, fmt.format(fields['created'][:10],
+                                     fields['security']['name'])
+        else:
+            fmt =  "Created:    {0:%d}" % WIDTH
+            print >> fhl, fmt.format(fields['created'][:10])
 
         # Update date and assignee
         asn = fields['assignee']
