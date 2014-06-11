@@ -253,6 +253,8 @@ class Gira(cli.Cli):
         self.useparser.add_argument('project')
 
         self.issueparser.add_argument('key', nargs='+')
+        self.issueparser.add_argument('--dryrun', '-n', action='store_true')
+        self.issueparser.add_argument('--verbose', '-v', action='store_true')
 
         self.debugparser.add_argument('resource')
 
@@ -599,20 +601,27 @@ class Gira(cli.Cli):
         for key, fields in issuesedit:
             # Update fields
             if not subset(fields['fields'], issues[key]['fields']):
-                self.curl('/issue/' + key, 'PUT', {'fields': fields['fields']})
+                if not args.dryrun:
+                    self.curl('/issue/' + key,
+                              'PUT', {'fields': fields['fields']})
+                if args.verbose:
+                    pprint.pprint({'fields': fields['fields']})
 
             # Add comment
             comment = fields['comment']
             if comment:
-                self.curl('/issue/%s/comment' % key, 'POST', {'body': comment})
+                if not args.dryrun:
+                    self.curl('/issue/%s/comment' % key,
+                              'POST', {'body': comment})
 
             # Edit comments
             comments = issues[key]['fields']['comment']['comments']
             for i, comment in enumerate(fields['comments']):
                 if not subset(comment, comments[i]):
                     cid = comments[i]['id']
-                    self.curl('/issue/%s/comment/%s' % (key, cid),
-                              'PUT', comment)
+                    if not args.dryrun:
+                        self.curl('/issue/%s/comment/%s' % (key, cid),
+                                  'PUT', comment)
 
             # Perform transition
             for transition in issues[key]['transitions']:
@@ -621,8 +630,9 @@ class Gira(cli.Cli):
                 # they relate to each other and this will cause this
                 # test to fail:
                 if fields['transition'] == transition['name']:
-                    self.curl('/issue/%s/transitions' % key, 'POST',
-                              {'transition': transition['id']})
+                    if not args.dryrun:
+                        self.curl('/issue/%s/transitions' % key, 'POST',
+                                  {'transition': transition['id']})
                     break
 
     def form(self, fhl, issue, new):
