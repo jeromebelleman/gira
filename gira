@@ -17,6 +17,7 @@ import textwrap
 import itertools
 import cli, readline
 import tab
+import time
 import pprint
 
 URL = '/rest/api/latest'
@@ -235,8 +236,7 @@ class Gira(cli.Cli):
 
         # Get a new cookie if needs be
         self.cookiepath = self.directory + '/cookie'
-        if not os.path.exists(os.path.expanduser(self.cookiepath)):
-            self.getcookie()
+        self.getcookie()
 
         # Arguments
         self.issuesparser.add_argument('-c', '--component')
@@ -271,43 +271,45 @@ class Gira(cli.Cli):
     def getcookie(self):
         '''Get cookie'''
 
-        print "Getting a fresh cookie... ",
-        sys.stdout.flush()
-        subprocess.call(['get-cookie', '-u',
-                         self.server + '/login', '-o', self.cookiepath])
-        print "Done."
+        renew = False
+        try:
+            if time.time() - os.stat(self.cookiepath).st_mtime > 60 * 60 * 24:
+                renew = True
+        except OSError:
+            renew = True
+
+        if renew:
+            print "Getting a fresh cookie... ",
+            sys.stdout.flush()
+            subprocess.call(['get-cookie', '-u',
+                             self.server + '/login', '-o',
+                             self.cookiepath])
+            print "Done."
 
     def curl(self, res, method=None, data=None):
         '''Prepare, run curl and manage its output'''
 
-        def curl():
-            '''Run curl'''
-
-            # Assemble arguments
-            args = ['curl', '-b', self.cookiepath]
-            if method and data:
-                # str(data) not good enough because JIRA is picky on which
-                # quotes to use, and json does it right
-                args += ['-X', method, '-d', json.dumps(data), '-H',
-                         'Content-Type: application/json']
-            args += [url]
-
-            # Run curl
-            proc = subprocess.Popen(args, stdout=subprocess.PIPE,
-                                    stderr=self.null)
-            out, _ = proc.communicate()
-            if out: # PUT returns empty string
-                return json.loads(out)
+        # Ask for a cookie if needs be
+        self.getcookie()
 
         # Prepare
         url = self.server + URL + res
 
-        # Run curl and ask for a cookie if needs be
-        try:
-            jsonout = curl()
-        except ValueError:
-            self.getcookie()
-            jsonout = curl()
+        # Assemble arguments
+        args = ['curl', '-b', self.cookiepath]
+        if method and data:
+            # str(data) not good enough because JIRA is picky on which
+            # quotes to use, and json does it right
+            args += ['-X', method, '-d', json.dumps(data), '-H',
+                     'Content-Type: application/json']
+        args += [url]
+
+        # Run curl
+        proc = subprocess.Popen(args, stdout=subprocess.PIPE,
+                                stderr=self.null)
+        out, _ = proc.communicate()
+        # PUT returns empty string
+        jsonout = json.loads(out) if out else None
 
         # Report errors
         if jsonout and 'errors' in jsonout:
