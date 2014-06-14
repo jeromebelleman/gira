@@ -168,10 +168,6 @@ def parseissue(temp):
             continue
 
         if line[:-1] == 'New Comment?':
-            # Description is done - remove new line and empty line
-            if 'description' in fields:
-                fields['description'] = fields['description'][:-2]
-
             # Strip last old comment since we know we won't have another one
             if issue['comments']:
                 issue['comments'][-1]['body'] = \
@@ -183,7 +179,7 @@ def parseissue(temp):
         if REFOOT.match(line[:-1]):
             # Description is done - remove new line
             if 'description' in fields:
-                fields['description'] = fields['description'][:-1]
+                fields['description'] = fields['description'].rstrip()
 
             issue['comment'] = issue['comment'].strip()
             state = None
