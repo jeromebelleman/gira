@@ -40,7 +40,7 @@ RECOMM = re.compile(r'^Comment from \w+, \S+:$')
 
 # Index
 REISSU = re.compile(r'^(?P<open>o)?(?:(?:└|├)─>)?(?P<key>[A-Z]+-\d+) +.*$')
-REGROU = re.compile(r'^#\s+(?P<grouping>.*)$')
+REGROU = re.compile(r'^"\s+(?P<grouping>.*)$')
 REBLAN = re.compile(r'^\s*$')
 
 def row(issues, key, fields, child=''):
@@ -206,6 +206,10 @@ def parseissues(temp, grouping):
     groups = []
     toopen = []
     for line in temp:
+        # Is it a comment?
+        if line[0] == '#':
+            continue
+
         # Is it an issue?
         match = REISSU.match(line)
         if match:
@@ -423,13 +427,16 @@ class Gira(cli.Cli):
         def mkgroup(heading, fields, grouping, group):
             '''Print tables for group'''
 
+            print >> tempfhl, "# Prefix an issue line with 'o' to open it"
+            print >> tempfhl
+
             for key in group:
                 # Create new table
                 rows = [heading]
 
                 # Write header
                 for grp in group[key][grouping]:
-                    print >> tempfhl, '# ' + grp
+                    print >> tempfhl, '" ' + grp
 
                 # Write table
                 table(rows, group[key]['issues'], fields)
