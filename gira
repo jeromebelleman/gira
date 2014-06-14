@@ -81,7 +81,12 @@ def parseissue(temp):
     # one go (e.g. literally 'AA-???').
     issues = [] 
 
+    state = None
     for line in temp:
+        # Ignore comments at the start of the view
+        if not state and line[0] == '#':
+            continue
+
         # Parse line
         match = REHEAD.match(line[:-1])
         if match:
@@ -95,7 +100,6 @@ def parseissue(temp):
 
             issues.append((key, issue))
             fields['summary'] = summary
-            state = None
             continue
 
         match = RETYPE.match(line[:-1])
@@ -659,6 +663,13 @@ class Gira(cli.Cli):
         '''Print issue form'''
 
         fields = issue['fields']
+
+        print >> fhl, """\
+# The green title and fields in yellow are editable, the other ones aren't. The
+# 'Status' field expects specific values which are suggested in the in-line
+# comment.  You can insert several lines of Component/Version fields.
+# Available ones can be completed from with CTRL-X CTRL-U."""
+        print >> fhl
 
         # Header
         print >> fhl, ">>> %s/%s %s" % (fields['project']['key'],
