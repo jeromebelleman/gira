@@ -253,6 +253,9 @@ class Gira(cli.Cli):
         self.issuesparser.add_argument('-c', '--component')
         self.issuesparser.add_argument('-g', '--group',
                                        choices=['versions', 'components'])
+        help = "show all issue states, included those closed"
+        self.issuesparser.add_argument('-a', '--all', help=help,
+                                       action='store_true')
         self.issuesparser.add_argument('-f', '--fixversion', nargs='+')
         self.issuesparser.add_argument('-m', '--maxresults', type=int,
                                        default=MAXRESULTS)
@@ -502,6 +505,8 @@ class Gira(cli.Cli):
             args.component if args.component else ''
         query += ' AND fixVersion = "%s"' % \
             ' '.join(args.fixversion) if args.fixversion else ''
+        if not args.all:
+            query += ' AND status NOT IN (Closed, Done)'
 
         issues = self.issues(query, args.group, args.maxresults)
 
