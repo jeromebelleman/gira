@@ -425,7 +425,9 @@ class Gira(cli.Cli):
         def mkgroup(heading, fields, grouping, group):
             '''Print tables for group'''
 
-            print >> tempfhl, "# Prefix an issue line with 'o' to open it"
+            print >> tempfhl, """\
+# Prefix an issue line with 'o' to open it. Move lines between groups to
+# change them. Editing lines has otherwise no effect."""
             print >> tempfhl
 
             for key in group:
