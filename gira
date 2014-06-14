@@ -249,9 +249,11 @@ class Gira(cli.Cli):
         self.issuesparser.add_argument('-c', '--component')
         self.issuesparser.add_argument('-g', '--group',
                                        choices=['versions', 'components'])
-        self.issuesparser.add_argument('-v', '--version', nargs='+')
+        self.issuesparser.add_argument('-f', '--fixversion', nargs='+')
         self.issuesparser.add_argument('-m', '--maxresults', type=int,
                                        default=MAXRESULTS)
+        self.issuesparser.add_argument('--dryrun', '-n', action='store_true')
+        self.issuesparser.add_argument('--verbose', '-v', action='store_true')
 
         self.searchparser.add_argument('jql', nargs='+')
         self.searchparser.add_argument('-m', '--maxresults', type=int,
@@ -493,7 +495,7 @@ class Gira(cli.Cli):
         query += ' AND component = "%s"' % \
             args.component if args.component else ''
         query += ' AND fixVersion = "%s"' % \
-            ' '.join(args.version) if args.version else ''
+            ' '.join(args.fixversion) if args.fixversion else ''
 
         issues = self.issues(query, args.group, args.maxresults)
 
@@ -516,7 +518,10 @@ class Gira(cli.Cli):
                     fields = {'fields': {args.group
                                          if args.group != 'versions'
                                          else 'fixVersions': groups}}
-                    self.curl('/issue/' + key, 'PUT', fields)
+                    if not args.dryrun:
+                        self.curl('/issue/' + key, 'PUT', fields)
+                    if args.verbose:
+                        pprint.pprint((key, fields))
 
         if toopen:
             def hook():
