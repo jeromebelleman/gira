@@ -168,6 +168,7 @@ def parseissue(temp):
             continue
 
         if line[:-1] == 'New Comment?':
+            # Description is done - remove new line and empty line
             if 'description' in fields:
                 fields['description'] = fields['description'][:-2]
 
@@ -180,6 +181,10 @@ def parseissue(temp):
             continue
 
         if REFOOT.match(line[:-1]):
+            # Description is done - remove new line
+            if 'description' in fields:
+                fields['description'] = fields['description'][:-1]
+
             issue['comment'] = issue['comment'].strip()
             state = None
             continue
@@ -257,6 +262,9 @@ class Gira(cli.Cli):
         self.issueparser.add_argument('key', nargs='+')
         self.issueparser.add_argument('--dryrun', '-n', action='store_true')
         self.issueparser.add_argument('--verbose', '-v', action='store_true')
+
+        self.createparser.add_argument('--dryrun', '-n', action='store_true')
+        self.createparser.add_argument('--verbose', '-v', action='store_true')
 
         self.debugparser.add_argument('resource')
 
@@ -643,7 +651,7 @@ class Gira(cli.Cli):
         fields = issue['fields']
 
         # Header
-        print >> fhl, ">>> %s/%s %s" % (fields['project']['name'],
+        print >> fhl, ">>> %s/%s %s" % (fields['project']['key'],
                                         issue['key'],
                                         fields['summary'])
 
@@ -723,18 +731,18 @@ class Gira(cli.Cli):
             print >> fhl
 
         # Footer
-        print >> fhl, "<<< %s/%s %s" % (fields['project']['name'],
+        print >> fhl, "<<< %s/%s %s" % (fields['project']['key'],
                                         issue['key'],
                                         fields['summary'])
         print >> fhl
 
-    def run_create(self, _):
+    def run_create(self, args):
         '''Run create command'''
 
         # Write form
         fhl = open(self.temp, 'w')
         issue = {'fields':
-                    {'assignee': {'name': ''},
+                    {'assignee': None,
                      'comment': {'comments': []},
                      'components': [{'name': 'TODO'}], # pylint: disable=fixme
                      'created': 'Now',
@@ -742,7 +750,7 @@ class Gira(cli.Cli):
                      'fixVersions': [{'name': 'TODO'}], # pylint: disable=fixme
                      'issuetype': {'name': 'TODO'}, # pylint: disable=fixme
                      'priority': {'name': 'TODO'}, # pylint: disable=fixme
-                     'project': {'name': self.project},
+                     'project': {'key': self.project},
                      'reporter': {'name': os.environ['USER']},
                      'resolution': {'name': ''},
                      'resolutiondate': '',
@@ -767,9 +775,14 @@ class Gira(cli.Cli):
 
         # Write issue data to JIRA
         for _, fields in issuesedit:
-            issue = self.curl('/issue', 'POST', {'fields': fields['fields']})
-            if 'key' in issue:
-                print "Created %s" % issue['key']
+            if not subset(fields['fields'], issue['fields']):
+                if not args.dryrun:
+                    issue = self.curl('/issue', 'POST',
+                                      {'fields': fields['fields']})
+                if args.verbose:
+                    pprint.pprint({'fields': fields['fields']})
+                if 'key' in issue:
+                    print "Created %s" % issue['key']
 
     def run_debug(self, args):
         '''Run query and print raw result'''
