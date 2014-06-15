@@ -516,7 +516,8 @@ class Gira(cli.Cli):
         query += ' AND fixVersion = "%s"' % \
             ' '.join(args.fixversion) if args.fixversion else ''
         if not args.all:
-            query += ' AND status NOT IN (Closed, Done)'
+            query += ' AND status NOT IN (%s)' % \
+                self.cfg.get('issues', 'closed')
 
         issues = self.issues(query, args.group, args.maxresults)
 
