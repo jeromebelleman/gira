@@ -289,7 +289,7 @@ class Gira(cli.Cli):
             self.versions(compl)
             compl.close()
 
-    def getcookie(self):
+    def getcookie(self, force=False):
         '''Get cookie'''
 
         renew = False
@@ -299,7 +299,7 @@ class Gira(cli.Cli):
         except OSError:
             renew = True
 
-        if renew:
+        if renew or force:
             print "Getting a fresh cookie... ",
             sys.stdout.flush()
             subprocess.call(['get-cookie', '-u',
@@ -313,24 +313,34 @@ class Gira(cli.Cli):
         # Ask for a cookie if needs be
         self.getcookie()
 
+        def curl():
+            '''Run curl'''
+
+            # Assemble arguments
+            args = ['curl', '-b', self.cookiepath]
+            if method and data:
+                # str(data) not good enough because JIRA is picky on which
+                # quotes to use, and json does it right
+                args += ['-X', method, '-d', json.dumps(data), '-H',
+                         'Content-Type: application/json']
+            args += [url]
+
+            # Run curl
+            proc = subprocess.Popen(args, stdout=subprocess.PIPE,
+                                    stderr=self.null)
+            out, _ = proc.communicate()
+            # PUT returns empty string
+            if out and '<title>Unauthorized (401)</title>' not in out:
+                return json.loads(out)
+
         # Prepare
         url = self.server + URL + res
 
-        # Assemble arguments
-        args = ['curl', '-b', self.cookiepath]
-        if method and data:
-            # str(data) not good enough because JIRA is picky on which
-            # quotes to use, and json does it right
-            args += ['-X', method, '-d', json.dumps(data), '-H',
-                     'Content-Type: application/json']
-        args += [url]
-
-        # Run curl
-        proc = subprocess.Popen(args, stdout=subprocess.PIPE,
-                                stderr=self.null)
-        out, _ = proc.communicate()
-        # PUT returns empty string
-        jsonout = json.loads(out) if out else None
+        # Run curl and ask for a cookie if needs be
+        jsonout = curl()
+        if not jsonout:
+            self.getcookie(True)
+            jsonout = curl()
 
         # Report errors
         if jsonout and 'errors' in jsonout:
