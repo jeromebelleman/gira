@@ -814,12 +814,12 @@ class Gira(cli.Cli):
         for _, fields in issuesedit:
             if not subset(fields['fields'], issue['fields']):
                 if not args.dryrun:
-                    issue = self.curl('/issue', 'POST',
-                                      {'fields': fields['fields']})
+                    newissue = self.curl('/issue', 'POST',
+                                         {'fields': fields['fields']})
                 if args.verbose:
                     pprint.pprint({'fields': fields['fields']})
-                if 'key' in issue:
-                    print "Created %s" % issue['key']
+                if 'key' in newissue:
+                    print "Created %s" % newissue['key']
 
     def run_debug(self, args):
         '''Run query and print raw result'''
