@@ -19,6 +19,7 @@ import cli, readline
 import tab
 import time
 import pprint
+import threading
 
 URL = '/rest/api/latest'
 MAXRESULTS = 50
@@ -245,10 +246,6 @@ class Gira(cli.Cli):
         self.cfg = ConfigParser.SafeConfigParser()
         self.cfg.read(self.directory + '/gira.cfg')
 
-        # Get a new cookie if needs be
-        self.cookiepath = self.directory + '/cookie'
-        self.getcookie()
-
         # Arguments
         self.issuesparser.add_argument('-c', '--component')
         self.issuesparser.add_argument('-g', '--group',
@@ -280,6 +277,22 @@ class Gira(cli.Cli):
         # Sink for curl
         self.null = open(os.devnull, 'w')
 
+        # Cookie
+        self.cookiepath = self.directory + '/cookie'
+        self.cookielock = threading.Lock()
+
+        # Start up
+        self.startupthread = threading.Thread(target=self.startupworker)
+        self.startupthread.start()
+
+    def startupworker(self):
+        '''
+        Start up in the background
+        '''
+
+        # Get a new cookie if needs be
+        self.getcookie()
+
         # Load component and version completion
         if self.project:
             compl = open(self.directory + '/components', 'w')
@@ -292,6 +305,7 @@ class Gira(cli.Cli):
     def getcookie(self, force=False):
         '''Get cookie'''
 
+        self.cookielock.acquire()
         renew = False
         try:
             if time.time() - os.stat(self.cookiepath).st_mtime > 60 * 60 * 24:
@@ -300,12 +314,11 @@ class Gira(cli.Cli):
             renew = True
 
         if renew or force:
-            print "Getting a fresh cookie... ",
-            sys.stdout.flush()
+            print "Getting a fresh cookie... "
             subprocess.call(['get-cookie', '-u',
                              self.server + '/login', '-o',
                              self.cookiepath])
-            print "Done."
+        self.cookielock.release()
 
     def curl(self, res, method=None, data=None):
         '''Prepare, run curl and manage its output'''
