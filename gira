@@ -200,7 +200,7 @@ def parseissue(temp):
 
     return issues
 
-def parseissues(temp, grouping):
+def parseissues(temp, grouping=None):
     '''Parse issue index'''
 
     issues = {}
@@ -214,7 +214,8 @@ def parseissues(temp, grouping):
         # Is it an issue?
         match = REISSU.match(line)
         if match:
-            issues[match.group('key')] = {grouping: groups}
+            if grouping:
+                issues[match.group('key')] = {grouping: groups}
             if match.group('open'):
                 toopen.append(match.group('key'))
 
@@ -602,6 +603,23 @@ class Gira(cli.Cli):
 
         jql = ['"%s"' % word if ' ' in word else word for word in args.jql]
         self.issues(' '.join(jql), None, args.maxresults)
+
+        # Open page file in Vim
+        subprocess.call(['vim', '-S', self.directory + '/issues.vimrc',
+                         self.temp])
+        self.wintitle()
+
+        # Parse data from issues file
+        tempvim = open(self.temp)
+        toopen, _ = parseissues(tempvim)
+        tempvim.close()
+
+        # Open issues if needs be
+        if toopen:
+            def hook():
+                readline.insert_text('issue ' + ' '.join(toopen))
+                readline.redisplay()
+            readline.set_pre_input_hook(hook)
 
     def run_projects(self, _):
         '''Run projects command'''
