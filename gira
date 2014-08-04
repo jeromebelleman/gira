@@ -315,10 +315,13 @@ class Gira(cli.Cli):
             renew = True
 
         if renew or force:
-            print "Getting a fresh cookie... "
-            subprocess.call(['get-cookie', '-u',
-                             self.server + '/login', '-o',
-                             self.cookiepath])
+            returncode = 1
+            while returncode != 0:
+                print "Getting a fresh cookie... "
+                args = ['get-cookie', '-u',
+                        self.server + '/login', '-o',
+                        self.cookiepath]
+                returncode = subprocess.call(args)
         self.cookielock.release()
 
     def curl(self, res, method=None, data=None):
@@ -343,7 +346,10 @@ class Gira(cli.Cli):
             proc = subprocess.Popen(args, stdout=subprocess.PIPE,
                                     stderr=self.null)
             out, _ = proc.communicate()
+
             # PUT returns empty string
+            # Not sure we still get 'Unauthorized' HTML pages, probably just
+            # JSON data with a 'errorMessages' key which we catch later on.
             if out and '<title>Unauthorized (401)</title>' not in out:
                 return json.loads(out)
 
@@ -352,9 +358,12 @@ class Gira(cli.Cli):
 
         # Run curl and ask for a cookie if needs be
         jsonout = curl()
-        if not jsonout:
-            self.getcookie(True)
-            jsonout = curl()
+        try:
+            if jsonout['errorMessages'][1] == 'Login Required':
+                self.getcookie(True)
+                jsonout = curl()
+        except (TypeError, KeyError, IndexError):
+            pass
 
         # Report errors
         if jsonout and 'errors' in jsonout:
