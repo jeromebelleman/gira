@@ -44,6 +44,9 @@ REISSU = re.compile(r'^(?P<open>o)?(?:(?:└|├)─>)?(?P<key>[A-Z]+-\d+) +.*$'
 REGROU = re.compile(r'^"\s+(?P<grouping>.*)$')
 REBLAN = re.compile(r'^\s*$')
 
+# Messages
+UNAVAILMSG = "JIRA is unavailable"
+
 def row(issues, key, fields, child=''):
     '''Return row of issue field values'''
 
@@ -330,7 +333,7 @@ class Gira(cli.Cli):
         # Ask for a cookie if needs be
         self.getcookie()
 
-        def curl():
+        def runcurl():
             '''Run curl'''
 
             # Assemble arguments
@@ -347,21 +350,33 @@ class Gira(cli.Cli):
                                     stderr=self.null)
             out, _ = proc.communicate()
 
-            # PUT returns empty string
             # Not sure we still get 'Unauthorized' HTML pages, probably just
             # JSON data with a 'errorMessages' key which we catch later on.
-            if out and '<title>Unauthorized (401)</title>' not in out:
-                return json.loads(out)
+            for _ in range(int(self.cfg.get('jira', 'retry'))):
+                try:
+                    if out:
+                        return json.loads(out)
+                    else:
+                        # PUT returns an empty string - nothing to return, then
+                        return
+                except ValueError:
+                    # Ouput is HTML - something went wrong, stay in the loop
+                    pass
+            else:
+                # Still getting HTML after so many retries
+                print >> sys.stderr, UNAVAILMSG
+                time.sleep(float(self.cfg.get('jira', 'retrywait')))
+                return {}
 
         # Prepare
         url = self.server + URL + res
 
         # Run curl and ask for a cookie if needs be
-        jsonout = curl()
+        jsonout = runcurl()
         try:
             if jsonout['errorMessages'][1] == 'Login Required':
                 self.getcookie(True)
-                jsonout = curl()
+                jsonout = runcurl()
         except (TypeError, KeyError, IndexError):
             pass
 
@@ -382,14 +397,17 @@ class Gira(cli.Cli):
             print >> sys.stderr, "Project not set"
             return
 
-        # Query
-        res = '/project/' + self.project
-        versions = [ver['name'] for ver in self.curl(res)['versions']]
+        try:
+            # Query
+            res = '/project/' + self.project
+            versions = [ver['name'] for ver in self.curl(res)['versions']]
 
-        # Report
-        for fhl in fhls:
-            for version in sorted(versions):
-                print >> fhl, version
+            # Report
+            for fhl in fhls:
+                for version in sorted(versions):
+                    print >> fhl, version
+        except KeyError:
+            pass
 
     def run_versions(self, _):
         '''Run versions command'''
@@ -589,14 +607,17 @@ class Gira(cli.Cli):
             print >> sys.stderr, "Project not set"
             return
 
-        # Query
-        res = '/project/' + self.project
-        components = [comp['name'] for comp in self.curl(res)['components']]
+        try:
+            # Query
+            res = '/project/' + self.project
+            components = [comp['name'] for comp in self.curl(res)['components']]
 
-        # Report
-        for fhl in fhls:
-            for component in sorted(components):
-                print >> fhl, component
+            # Report
+            for fhl in fhls:
+                for component in sorted(components):
+                    print >> fhl, component
+        except KeyError:
+            pass
 
     def run_components(self, _):
         '''Run components command'''
@@ -661,12 +682,14 @@ class Gira(cli.Cli):
     def run_issue(self, args):
         '''Run issue command'''
 
-        fhl = open(self.temp, 'w')
-        issues = {}
-        for key in args.key:
-            issues[key] = self.curl('/issue/%s?expand=transitions' % key)
-            self.form(fhl, issues[key], False)
-        fhl.close()
+        with open(self.temp, 'w') as fhl:
+            issues = {}
+            for key in args.key:
+                issues[key] = self.curl('/issue/%s?expand=transitions' % key)
+                try:
+                    self.form(fhl, issues[key], False)
+                except KeyError:
+                    return
 
         # Open page file in Vim
         subprocess.call(['vim', '-S', self.directory + '/issue.vimrc',
