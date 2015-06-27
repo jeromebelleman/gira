@@ -343,6 +343,7 @@ class Gira(cli.Cli):
                 # quotes to use, and json does it right
                 args += ['-X', method, '-d', json.dumps(data), '-H',
                          'Content-Type: application/json']
+                print "will change data"
             args += [url]
 
             # Run curl
@@ -525,7 +526,7 @@ class Gira(cli.Cli):
 
         if group == 'versions':
             mkgroup(["KEY", "ASSIGNEE", "REPORTER", "COMPONENTS",
-                     "VERSIONS", "STATUS", "SUMMARY"],
+                     "STATUS", "SUMMARY"],
                     ['asn', 'rep', 'components', 'status', 'summary'],
                     group, versions)
         elif group == 'components':
@@ -534,10 +535,11 @@ class Gira(cli.Cli):
                     ['asn', 'rep', 'versions', 'status', 'summary'],
                     group, components)
         else:
-            rows = [["KEY", "ASSIGNEE", "REPORTER", "COMPONENTS",
-                     "VERSIONS", "STATUS", "SUMMARY"]]
-            table(rows, issues, ['asn', 'rep', 'components',
-                                 'versions', 'status', 'summary'])
+            table([["KEY", "ASSIGNEE", "REPORTER", "COMPONENTS", "VERSIONS",
+                    "STATUS", "SUMMARY"]],
+                   issues,
+                   ['asn', 'rep', 'components', 'versions', 'status',
+                    'summary'])
 
         tempfhl.close()
 
