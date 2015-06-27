@@ -155,8 +155,9 @@ def parseissue(temp):
         match = RERESO.match(line[:-1])
         if match:
             # Let's not touch dates for now
-            rep = match.group('rep').strip()
-            fields['reporter'] = {'name': rep} if rep else None
+            # Setting the reporter doesn't work for some projects
+            # rep = match.group('rep').strip()
+            # fields['reporter'] = {'name': rep} if rep else None
             continue
 
         if line[:-1] == 'Description:':
