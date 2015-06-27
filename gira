@@ -278,7 +278,8 @@ class Gira(cli.Cli):
 
         self.issueparser.add_argument('key', nargs='+')
         self.issueparser.add_argument('--dryrun', '-n', action='store_true')
-        self.issueparser.add_argument('--verbose', '-v', action='store_true')
+        self.issueparser.add_argument('--verbose', '-v', action='store_true',
+                                      help="show if and how data is changed")
 
         self.createparser.add_argument('--dryrun', '-n', action='store_true')
         self.createparser.add_argument('--verbose', '-v', action='store_true')
@@ -329,7 +330,6 @@ class Gira(cli.Cli):
                 # quotes to use, and json does it right
                 args += ['-X', method, '-d', json.dumps(data), '-H',
                          'Content-Type: application/json']
-                print "will change data"
             args += [url]
 
             # Run curl
