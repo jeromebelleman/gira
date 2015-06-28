@@ -1,0 +1,171 @@
+.TH "GIRA" "1" "January 2015" "" ""
+.hy
+.SH NAME
+.PP
+gira \- JIRA command line interface
+.SH SYNOPSIS
+.PP
+\f[B]gira [\-h] [\-p PREFIX] [project]\f[]
+.SH OPTIONS
+.TP
+.B \f[B]\-h, \-\-help\f[]
+Show help message and exit.
+.RS
+.RE
+.TP
+.B \f[B]\-p, \-\-prefix\f[]
+installation prefix (default: \f[B]/usr\f[])
+.RS
+.RE
+.TP
+.B \f[B]project\f[]
+JIRA project.
+.RS
+.RE
+.SH CONFIGURATION
+.PP
+You\[aq]ll need to at least specify the JIRA server you wish to use in
+\f[B]~/.gira/gira.cfg\f[].
+Other parameters are optional.
+.IP
+.nf
+\f[C]
+[issues]
+closed\ =\ Closed,\ Done,\ Resolved
+
+[jira]
+server\ =\ https://example.net/jira
+#\ How\ many\ times\ to\ retry\ running\ curl\ when\ JIRA\ is\ unavailable\ 
+retry\ =\ 10
+retrywait\ =\ .1
+\f[]
+.fi
+.SH AUTHENTICATION
+.PP
+Gira expects an authentication cookie in a file.
+Since this is done a different way for each different site, you\[aq]ll
+need to write a \f[B]gira.cookie\f[] Python module visible in your
+Python path and providing a \f[B]getcookie()\f[] function looking like
+this:
+.IP
+.nf
+\f[C]
+import\ os
+import\ time
+import\ subprocess
+
+def\ getcookie(lock,\ server,\ path,\ force=False):
+\ \ \ \ lock.acquire()
+\ \ \ \ renew\ =\ False
+\ \ \ \ try:
+\ \ \ \ \ \ \ \ #\ Renew\ if\ cookie\ file\ older\ than\ a\ day
+\ \ \ \ \ \ \ \ if\ time.time()\ \-\ os.stat(path).st_mtime\ >\ 60\ *\ 60\ *\ 24:
+\ \ \ \ \ \ \ \ \ \ \ \ renew\ =\ True
+\ \ \ \ except\ OSError:
+\ \ \ \ \ \ \ \ renew\ =\ True
+
+\ \ \ \ if\ renew\ or\ force:
+\ \ \ \ \ \ \ \ returncode\ =\ 1
+\ \ \ \ \ \ \ \ while\ returncode\ !=\ 0:
+\ \ \ \ \ \ \ \ \ \ \ \ print\ "Getting\ a\ fresh\ cookie...\ "
+\ \ \ \ \ \ \ \ \ \ \ \ returncode\ =\ subprocess.call([\[aq]/usr/bin/getcookie\[aq],\ \[aq]\-s\[aq],\ server,
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \[aq]\-o\[aq],\ path])
+\ \ \ \ lock.release()
+\f[]
+.fi
+.IP \[bu] 2
+You need to acquire a \f[B]threading.Lock()\f[] passed as parameter
+because gira attempts to get cookies behind your back as soon as
+possible without keeping you from working.
+.IP \[bu] 2
+This example chooses to renew the cookie if it\[aq]s too old, but
+that\[aq]s of course up to you.
+.IP \[bu] 2
+An imaginary command getting a cookie file is run here.
+The \f[B]getcookie()\f[] function expects a JIRA instance
+\f[B]server\f[] name to get the cookie from.
+This server name is specified in \f[B]~/.gira/gira.cfg\f[].
+Maybe you don\[aq]t even need this.
+.IP \[bu] 2
+The \f[B]path\f[] parameter refers to the path of the cookie file,
+including its file name.
+.IP \[bu] 2
+The \f[B]force\f[] parameter is used to get a new cookie no matter what.
+.SH SELECTING A PROJECT
+.PP
+If you haven\[aq]t already done so with \f[B]gira\f[]\[aq]s
+\f[B]project\f[] argument, select a project once in the CLI:
+.IP
+.nf
+\f[C]
+gira%\ projects
+The\ Foo\ Project\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ FOO
+The\ Bar\ Project\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ BAR
+The\ Baz\ Project\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ BAZ
+The\ Boo\ Project\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ BOO
+gira%\ use\ BAR
+BAR%
+\f[]
+.fi
+.SH VERSIONS AND COMPONENTS
+.PP
+You can list \f[B]versions\f[] and \f[B]components\f[] known to the
+project with the respective commands.
+This is useful to list project issues in a clearer way, e.g.\ by
+grouping them by version or component:
+.IP
+.nf
+\f[C]
+BAR%\ issues\ \-g\ versions
+BAR%\ issues\ \-g\ components
+\f[]
+.fi
+.SH LISTING AND SEARCHING ISSUES
+.PP
+Issues are displayed in a Vim buffer.
+You can use the Vim buffer to move issues between versions and
+components.
+The \f[B]search\f[] command also lists issues, except that they will
+result from a JQL search passed as argument.
+Either way, you can prefix one or more issues with the character
+\f[B]o\f[] which, once you save the Vim buffer and exit it, will have
+the effect of presenting their key to the next command line to open them
+with the \f[B]issue\f[] command:
+.IP
+.nf
+\f[C]
+BAR%\ issue\ BAR\-1234\ BAR\-1235\ BAR\-1236
+\f[]
+.fi
+.SH VIEWING, EDITING, CREATING ISSUES
+.PP
+The \f[B]issue\f[] command displays one or more issues in a single Vim
+buffer.
+You can edit fields, add comments, choose values from contextual menus
+\[en]\ there\[aq]s a short description at the top of the buffer of what
+you can do and how.
+Since this is all presented by Vim, nothing keeps you from automating
+any large\-scale operations you might fancy.
+Saving the buffer will apply the changes.
+.PP
+Similarly, you can create new issues with the \f[B]create\f[] command.
+Make sure you don\[aq]t leave any fields to \f[B]TODO\f[], lest the
+issue won\[aq]t be created.
+.SH ODDS AND ENDS
+.PP
+The \f[B]edit\f[] command edits a command line.
+The \f[B]page\f[] command pages the last output inside Vim.
+The \f[B]debug\f[] command shows the raw JSON data sent from the server
+in answer to a request:
+.IP
+.nf
+\f[C]
+BAR%\ search\ /issue/BAR\-1236
+\f[]
+.fi
+.SH HELP
+.PP
+All commands are documented with their \f[B]\-h\f[] option or the
+\f[B]help\f[] command.
+.SH AUTHORS
+Jérôme Belleman.
