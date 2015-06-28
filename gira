@@ -250,19 +250,22 @@ def parseissues(temp, grouping=None):
 class Gira(cli.Cli):
     '''Gira CLI class'''
 
-    def __init__(self, server, project):
+    def __init__(self, project, prefix):
         '''Initialise parser and get cookie'''
 
         cli.Cli.__init__(self, history=True)
 
-        self.server = server
         self.project = project
+        self.prefix = prefix
         self.prompt = (project if project else 'gira') + '% '
         self.wrapper = textwrap.TextWrapper(width=80)
 
         # Configuration
         self.cfg = ConfigParser.SafeConfigParser()
         self.cfg.read(self.directory + '/gira.cfg')
+        if not self.cfg.has_option('jira', 'server'):
+            print >> sys.stderr, "Missing JIRA server in ~/.gira/gira.cfg"
+            sys.exit(1)
         for (section, option), val in zip((
                              ('jira', 'retry'),
                              ('jira', 'retrywait'),
@@ -277,6 +280,8 @@ class Gira(cli.Cli):
                 if not self.cfg.has_section(section):
                     self.cfg.add_section(section)
                 self.cfg.set(section, option, val)
+
+        self.server = self.cfg.get('jira', 'server')
 
         # Arguments
         self.issuesparser.add_argument('-c', '--component')
@@ -583,7 +588,8 @@ class Gira(cli.Cli):
         issues = self.issues(query, args.group, args.maxresults)
 
         # Open page file in Vim
-        subprocess.call(['vim', '-S', self.directory + '/issues.vimrc',
+        subprocess.call(['vim', '-S',
+                         self.prefix + '/share/gira/issues.vimrc',
                          self.temp])
         self.wintitle()
 
@@ -655,7 +661,7 @@ class Gira(cli.Cli):
         self.issues(' '.join(jql), None, args.maxresults)
 
         # Open page file in Vim
-        subprocess.call(['vim', '-S', self.directory + '/issues.vimrc',
+        subprocess.call(['vim', '-S', self.prefix + '/share/gira/issues.vimrc',
                          self.temp])
         self.wintitle()
 
@@ -712,7 +718,7 @@ class Gira(cli.Cli):
                     return
 
         # Open page file in Vim
-        subprocess.call(['vim', '-S', self.directory + '/issue.vimrc',
+        subprocess.call(['vim', '-S', self.prefix + '/share/gira/issue.vimrc',
                          self.temp])
         self.wintitle()
 
@@ -885,7 +891,7 @@ class Gira(cli.Cli):
         fhl.close()
 
         # Open page file in Vim
-        subprocess.call(['vim', '-S', self.directory + '/issue.vimrc',
+        subprocess.call(['vim', '-S', self.prefix + '/share/gira/issue.vimrc',
                          self.temp])
         self.wintitle()
 
@@ -919,12 +925,13 @@ def main():
 
     # Arguments
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
-    parser.add_argument('-s', '--server', default='https://example.net/jira')
+    parser.add_argument('-p', '--prefix', default='/usr',
+                        help="installation prefix")
     parser.add_argument('project', nargs='?')
     args = parser.parse_args()
 
     # CLI
-    Gira(args.server, args.project).loop()
+    Gira(args.project, args.prefix).loop()
 
 if __name__ == '__main__':
     sys.exit(main())
