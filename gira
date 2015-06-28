@@ -77,7 +77,8 @@ def subset(needle, haystack):
             if not subset(needle[item], haystack[item]):
                 return False
     elif isinstance(needle, str) and isinstance(haystack, unicode):
-        return needle.replace('\r', '') == haystack.replace('\r', '')
+        return needle.replace('\r', '').strip() == \
+            haystack.replace('\r', '').strip()
     else:
         return needle == haystack
 
@@ -194,7 +195,8 @@ def parseissue(temp):
         if REFOOT.match(line[:-1]):
             # Description is done - remove new line
             if 'description' in fields:
-                fields['description'] = fields['description'].rstrip()
+                description = fields['description'].strip()
+                fields['description'] = description if description else None
 
             issue['comment'] = issue['comment'].strip()
             state = None
