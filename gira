@@ -88,7 +88,7 @@ def parseissue(temp):
     '''Parse issue form'''
 
     # A list of (key, {}) rather than a dictionary keyed on the issue
-    # key so we can issues with the same key, as when we create many in
+    # key so we can create issues with the same key, as when we create many in
     # one go (e.g. literally 'AA-???').
     issues = [] 
 
@@ -364,7 +364,7 @@ class Gira(cli.Cli):
             out, _ = proc.communicate()
 
             # Not sure we still get 'Unauthorized' HTML pages, probably just
-            # JSON data with a 'errorMessages' key which we catch later on.
+            # JSON data with an 'errorMessages' key which we catch later on.
             for _ in range(int(self.cfg.get('jira', 'retry'))):
                 try:
                     if out:
