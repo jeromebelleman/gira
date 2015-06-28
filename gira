@@ -121,7 +121,9 @@ def parseissue(temp):
 
         match = REPRIO.match(line[:-1])
         if match:
-            fields['priority'] = {'name': match.group('prio').strip()}
+            prio = match.group('prio').strip()
+            if prio:
+                fields['priority'] = {'name': prio}
             continue
 
         match = RECOMP.match(line[:-1])
@@ -196,7 +198,10 @@ def parseissue(temp):
             # Description is done - remove new line
             if 'description' in fields:
                 description = fields['description'].strip()
-                fields['description'] = description if description else None
+                if description:
+                    fields['description'] = description
+                else:
+                    del fields['description']
 
             issue['comment'] = issue['comment'].strip()
             state = None
@@ -770,15 +775,16 @@ class Gira(cli.Cli):
                                                 in issue['transitions']]))
 
         # Priority and resolution
-        priority = fields['priority']
+        priority = fields['priority'] if 'priority' in fields else ''
         resolution = fields['resolution']
         fmt = "Priority:   {0:%d} Resolution: {1}" % WIDTH
         print >> fhl, fmt.format(priority['name'] if priority else '',
                                  resolution['name'] if resolution else '')
 
         # Components and versions
-        for component, version in itertools.izip_longest(fields['components'],
-                                                         fields['fixVersions']):
+        components = fields['components'] if 'components' in fields else []
+        versions = fields['fixVersions'] if 'fixVersions' in fields else []
+        for component, version in itertools.izip_longest(components, versions):
             if component and version:
                 fmt = "Component:  {0:%d} Version:    {1}" % WIDTH
                 values = (component['name'], version['name'])
@@ -815,7 +821,7 @@ class Gira(cli.Cli):
         # Description
         print >> fhl
         print >> fhl, "Description:"
-        if fields['description']:
+        if 'description' in fields and fields['description']:
             print >> fhl, fields['description'].replace('\r', '')
 
         # Comments
