@@ -426,46 +426,49 @@ class Gira(cli.Cli):
             components = {}
         issues = {} # Need this structure anyway to subset later on
 
-        for issue in result['issues']:
-            # Key
-            iss = {}
+        if 'issues' in result:
+            for issue in result['issues']:
+                # Key
+                iss = {}
 
-            # Fields
-            fields = issue['fields']
+                # Fields
+                fields = issue['fields']
 
-            iss['asn'] = fields['assignee']['name'] \
-                if fields['assignee'] else ''
+                iss['asn'] = fields['assignee']['name'] \
+                    if fields['assignee'] else ''
 
-            iss['components'] = [com['name'] for com in fields['components']]
+                iss['components'] = [com['name'] \
+                    for com in fields['components']]
 
-            iss['versions'] = [ver['name'] for ver in fields['fixVersions']]
+                iss['versions'] = [ver['name'] for ver in fields['fixVersions']]
 
-            iss['rep'] = fields['reporter']['name'] \
-                if fields['reporter'] else ''
+                iss['rep'] = fields['reporter']['name'] \
+                    if fields['reporter'] else ''
 
-            iss['status'] = fields['status']['name']
+                iss['status'] = fields['status']['name']
 
-            iss['summary'] = fields['summary'].strip()
+                iss['summary'] = fields['summary'].strip()
 
-            iss['subtasks'] = [subtask['key'] for subtask in fields['subtasks']]
+                iss['subtasks'] = [subtask['key'] \
+                    for subtask in fields['subtasks']]
 
-            iss['parent'] = fields['parent'] if 'parent' in fields else None
+                iss['parent'] = fields['parent'] if 'parent' in fields else None
 
-            if group == 'versions':
-                versstr = repr(iss['versions'])
-                if versstr in versions:
-                    versions[versstr]['issues'][issue['key']] = iss
-                else:
-                    versions[versstr] = {'versions': iss['versions'],
-                                         'issues': {issue['key']: iss}}
-            elif group == 'components':
-                compstr = repr(iss['components'])
-                if compstr in components:
-                    components[compstr]['issues'][issue['key']] = iss
-                else:
-                    components[compstr] = {'components': iss['components'],
-                                           'issues': {issue['key']: iss}}
-            issues[issue['key']] = iss
+                if group == 'versions':
+                    versstr = repr(iss['versions'])
+                    if versstr in versions:
+                        versions[versstr]['issues'][issue['key']] = iss
+                    else:
+                        versions[versstr] = {'versions': iss['versions'],
+                                             'issues': {issue['key']: iss}}
+                elif group == 'components':
+                    compstr = repr(iss['components'])
+                    if compstr in components:
+                        components[compstr]['issues'][issue['key']] = iss
+                    else:
+                        components[compstr] = {'components': iss['components'],
+                                               'issues': {issue['key']: iss}}
+                issues[issue['key']] = iss
 
         # Report
         tempfhl = open(self.temp, 'w')
