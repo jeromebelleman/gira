@@ -263,6 +263,20 @@ class Gira(cli.Cli):
         # Configuration
         self.cfg = ConfigParser.SafeConfigParser()
         self.cfg.read(self.directory + '/gira.cfg')
+        for (section, option), val in zip((
+                             ('jira', 'retry'),
+                             ('jira', 'retrywait'),
+                             ('issues', 'closed'),
+                            ),
+                            (
+                             '10',
+                             '.1',
+                             'Closed, Done, Resolved',
+                            )):
+            if not self.cfg.has_option(section, option):
+                if not self.cfg.has_section(section):
+                    self.cfg.add_section(section)
+                self.cfg.set(section, option, val)
 
         # Arguments
         self.issuesparser.add_argument('-c', '--component')
